@@ -55,8 +55,7 @@ func read(ctx context.Context, mem api.Memory, ptr uint32, val reflect.Value, la
 			return read(ctx, mem, ptr+payloadOffset, valueField, valueLayout)
 		}
 		return nil
-	}
-	if isResult(typ) {
+	} else if isResult(typ) {
 		okField := val.FieldByName("Ok")
 		errField := val.FieldByName("Err")
 		okLayout, err := GetOrCalculateLayout(okField.Type())
@@ -85,8 +84,7 @@ func read(ctx context.Context, mem api.Memory, ptr uint32, val reflect.Value, la
 			return read(ctx, mem, ptr+payloadOffset, errField, errLayout)
 		}
 		return read(ctx, mem, ptr+payloadOffset, okField, okLayout)
-	}
-	if isVariant(typ) {
+	} else if isVariant(typ) {
 		var maxAlign uint32 = 1
 		caseLayouts := make([]*TypeLayout, val.NumField())
 		for i := 0; i < val.NumField(); i++ {
@@ -120,6 +118,37 @@ func read(ctx context.Context, mem api.Memory, ptr uint32, val reflect.Value, la
 		}
 
 		return read(ctx, mem, ptr+payloadOffset, payloadField, caseLayouts[disc])
+	} else if isFlags(typ) {
+		var bits uint64
+		var ok bool
+		switch layout.Size {
+		case 1:
+			var b byte
+			b, ok = mem.ReadByte(ptr)
+			bits = uint64(b)
+		case 2:
+			var s uint16
+			s, ok = mem.ReadUint16Le(ptr)
+			bits = uint64(s)
+		case 4:
+			var i uint32
+			i, ok = mem.ReadUint32Le(ptr)
+			bits = uint64(i)
+		case 8:
+			bits, ok = mem.ReadUint64Le(ptr)
+		}
+		if !ok {
+			return fmt.Errorf("memory read failed for flags at ptr %d", ptr)
+		}
+
+		for i := 0; i < val.NumField(); i++ {
+			if (bits & (1 << i)) != 0 {
+				val.Field(i).SetBool(true)
+			} else {
+				val.Field(i).SetBool(false)
+			}
+		}
+		return nil
 	}
 	switch val.Kind() {
 	case reflect.Uint8, reflect.Int8:
@@ -166,7 +195,7 @@ func read(ctx context.Context, mem api.Memory, ptr uint32, val reflect.Value, la
 		val.SetString(s)
 		return nil
 	case reflect.Slice:
-		return lowerSlice(mem, ptr, val)
+		return lowerSlice(ctx, mem, ptr, val)
 	case reflect.Struct:
 		return lowerStruct(ctx, mem, ptr, val, layout)
 	case reflect.Array:
@@ -186,7 +215,8 @@ func lowerString(mem api.Memory, ptr uint32) (string, error) {
 	return LowerStringFromParts(mem, contentPtr, contentLen)
 }
 
-func lowerSlice(mem api.Memory, ptr uint32, val reflect.Value) error {
+// lowerSlice is now generic for any element type.
+func lowerSlice(ctx context.Context, mem api.Memory, ptr uint32, val reflect.Value) error {
 	buf, ok := mem.Read(ptr, 8)
 	if !ok {
 		return fmt.Errorf("failed to read slice ptr/len at ptr %d", ptr)
@@ -194,20 +224,30 @@ func lowerSlice(mem api.Memory, ptr uint32, val reflect.Value) error {
 	contentPtr := binary.LittleEndian.Uint32(buf[0:4])
 	contentLen := binary.LittleEndian.Uint32(buf[4:8])
 
-	elemLayout, err := GetOrCalculateLayout(val.Type().Elem())
+	elemType := val.Type().Elem()
+	elemLayout, err := GetOrCalculateLayout(elemType)
 	if err != nil {
 		return err
 	}
 
-	if elemLayout.Size == 1 { // Handle byte slices
-		content, err := LowerSliceFromParts(mem, contentPtr, contentLen)
-		if err != nil {
-			return err
+	newSlice := reflect.MakeSlice(val.Type(), int(contentLen), int(contentLen))
+
+	// Stride is the size of each element "slot" in the array, including padding.
+	stride := align(elemLayout.Size, elemLayout.Alignment)
+
+	// Read each element recursively from the correct stride-based offset.
+	for i := 0; i < int(contentLen); i++ {
+		elemVal := newSlice.Index(i)
+		// Calculate the precise starting pointer for the current element.
+		elemPtr := contentPtr + (uint32(i) * stride)
+
+		if err := read(ctx, mem, elemPtr, elemVal, elemLayout); err != nil {
+			return fmt.Errorf("failed to read slice element %d: %w", i, err)
 		}
-		val.Set(reflect.ValueOf(content))
-		return nil
 	}
-	return fmt.Errorf("lowering non-byte slices requires recursive reads (not implemented)")
+
+	val.Set(newSlice)
+	return nil
 }
 
 func lowerArray(ctx context.Context, mem api.Memory, ptr uint32, val reflect.Value) error {

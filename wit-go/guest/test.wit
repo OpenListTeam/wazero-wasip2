@@ -30,4 +30,27 @@ world test-world {
     export handle-option: func(opt: option<string>) -> option<u32>;
     export handle-result: func(res: result<string, color>) -> result<u32, color>;
     export handle-variant: func(s: shape) -> string;
+
+
+    flags permissions {
+        read,
+        write,
+        execute,
+    }
+
+    // A new function to test flags.
+    export handle-permissions: func(p: permissions) -> list<string>;
+
+    // A new function to test a list of records.
+    export process-users: func(users: list<my-data>) -> list<string>;
+
+    record complex-record {
+        id: string,
+        permissions: option<permissions>,
+        // A list of other records
+        child-data: list<my-data>,
+        shape-info: result<shape, string>,
+    }
+
+    export handle-complex-record: func(r: complex-record) -> u32;
 }

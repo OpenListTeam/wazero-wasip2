@@ -111,19 +111,6 @@ func calculateSumLayout(typ reflect.Type, discOffset int, cases []reflect.Type) 
 	}, nil
 }
 
-// Helper functions to identify and extract variant info via tags.
-func isVariant(typ reflect.Type) bool {
-	if typ.Kind() != reflect.Struct {
-		return false
-	}
-	for i := 0; i < typ.NumField(); i++ {
-		if _, ok := typ.Field(i).Tag.Lookup("wit"); ok {
-			return true
-		}
-	}
-	return false
-}
-
 func getVariantCaseTypes(typ reflect.Type) []reflect.Type {
 	var types []reflect.Type
 	for i := 0; i < typ.NumField(); i++ {
@@ -185,21 +172,4 @@ func calculateArrayLayout(typ reflect.Type) (*TypeLayout, error) {
 		Size:      align(currentOffset, elemLayout.Alignment),
 		Alignment: elemLayout.Alignment,
 	}, nil
-}
-
-func isOption(typ reflect.Type) bool {
-	return typ.Kind() == reflect.Struct &&
-		typ.NumField() == 2 &&
-		typ.Field(0).Name == "HasValue" && // Changed from "hasValue"
-		typ.Field(0).Type.Kind() == reflect.Bool
-}
-
-// isResult checks if a reflect.Type structurally matches our Result[T, E] generic.
-func isResult(typ reflect.Type) bool {
-	return typ.Kind() == reflect.Struct &&
-		typ.NumField() == 3 &&
-		typ.Field(0).Name == "IsErr" && // Changed from "isErr"
-		typ.Field(0).Type.Kind() == reflect.Bool &&
-		typ.Field(1).Name == "Ok" && // Changed from "ok"
-		typ.Field(2).Name == "Err" // Changed from "err"
 }

@@ -39,6 +39,21 @@ type Shape struct {
 	Rectangle [2]uint32 `wit:"case(1)"`
 }
 
+type Permissions struct {
+	Read    bool
+	Write   bool
+	Execute bool
+}
+
+func (*Permissions) IsFlags() {}
+
+type ComplexRecord struct {
+	ID          string
+	Permissions Option[Permissions]
+	ChildData   []MyData // This is the key: a list of records
+	ShapeInfo   Result[Shape, string]
+}
+
 func TestWitGo(t *testing.T) {
 	ctx := context.Background()
 
@@ -166,5 +181,58 @@ func TestWitGo(t *testing.T) {
 		err := host.Call(ctx, "handle-variant", &result, input)
 		require.NoError(t, err)
 		assert.Equal(t, "Circle with radius 10.5", result)
+	})
+
+	t.Run("Handle Flags", func(t *testing.T) {
+		var result []string
+		// Pass a flags struct as a parameter.
+		input := Permissions{Read: true, Execute: true}
+		err := host.Call(ctx, "handle-permissions", &result, input)
+		require.NoError(t, err)
+
+		// Check that the guest correctly interpreted the bitmask.
+		assert.Equal(t, []string{"read", "execute"}, result)
+	})
+
+	t.Run("Handle List of Records", func(t *testing.T) {
+		var result []string
+		input := []MyData{
+			{A: 1, B: "Alice", C: []byte{1, 0}},
+			{A: 2, B: "Bob", C: []byte{2, 0}},
+		}
+		err := host.Call(ctx, "process-users", &result, input)
+		require.NoError(t, err)
+
+		// Check that the guest correctly processed the list and returned the names.
+		assert.Equal(t, []string{"Alice", "Bob"}, result)
+	})
+
+	t.Run("Handle Complex Nested Record", func(t *testing.T) {
+		var result uint32
+		radius := float32(50.0)
+		input := ComplexRecord{
+			ID: "complex-id-123",
+			Permissions: Some(Permissions{
+				Read:  true,
+				Write: true,
+			}),
+			ChildData: []MyData{
+				{A: 10, B: "child1", C: []byte{1}},
+				{A: 20, B: "child2", C: []byte{2}},
+			},
+			ShapeInfo: Ok[Shape, string](Shape{Circle: radius}),
+		}
+
+		err := host.Call(ctx, "handle-complex-record", &result, input)
+		require.NoError(t, err)
+
+		// Checksum calculated by hand from the input data based on guest logic:
+		// len("complex-id-123") -> 14
+		// Permissions has Write -> +100
+		// len(ChildData) * 1000 -> 2 * 1000 = 2000
+		// Child checksum -> 10 + 20 = 30
+		// ShapeInfo is Circle -> +50
+		// Total: 14 + 100 + 2000 + 30 + 50 = 2194
+		assert.Equal(t, uint32(2194), result)
 	})
 }

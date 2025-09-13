@@ -76,6 +76,52 @@ impl Guest for MyGuest {
             Shape::Rect(dims) => format!("Rectangle with size {}x{}", dims.0, dims.1),
         }
     }
+
+    fn handle_permissions(p: Permissions) -> Vec<String> {
+        let mut result = Vec::new();
+        if p.contains(Permissions::READ) {
+            result.push("read".to_string());
+        }
+        if p.contains(Permissions::WRITE) {
+            result.push("write".to_string());
+        }
+        if p.contains(Permissions::EXECUTE) {
+            result.push("execute".to_string());
+        }
+        result
+    }
+
+    fn process_users(users: Vec<MyData>) -> Vec<String> {
+        let mut names = Vec::new();
+        for user in users {
+            host_log(&format!("Processing user: id={}, name='{}'", user.a, user.b));
+            names.push(user.b);
+        }
+        names
+    }
+
+    fn handle_complex_record(r: ComplexRecord) -> u32 {
+        let mut check_sum: u32 = 0;
+        check_sum += r.id.len() as u32;
+
+        if let Some(p) = r.permissions {
+            if p.contains(Permissions::WRITE) {
+                check_sum += 100;
+            }
+        }
+        
+        check_sum += r.child_data.len() as u32 * 1000;
+        for child in r.child_data {
+            check_sum += child.a;
+        }
+
+        if let Ok(Shape::Circle(radius)) = r.shape_info {
+            check_sum += radius as u32;
+        }
+
+        host_log(&format!("Guest processed complex record, checksum: {}", check_sum));
+        check_sum
+    }
 }
 
 // Export the implementation.

@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"reflect"
-	"unsafe"
 
 	"github.com/tetratelabs/wazero/api"
 )
@@ -46,8 +45,7 @@ func write(ctx context.Context, mem api.Memory, alloc *GuestAllocator, val refle
 			return write(ctx, mem, alloc, valueField, ptr+payloadOffset, valueLayout)
 		}
 		return nil
-	}
-	if isResult(typ) {
+	} else if isResult(typ) {
 		okField := val.FieldByName("Ok")
 		errField := val.FieldByName("Err")
 		okLayout, err := GetOrCalculateLayout(okField.Type())
@@ -74,9 +72,7 @@ func write(ctx context.Context, mem api.Memory, alloc *GuestAllocator, val refle
 			return write(ctx, mem, alloc, errField, ptr+payloadOffset, errLayout)
 		}
 		return write(ctx, mem, alloc, okField, ptr+payloadOffset, okLayout)
-	}
-
-	if isVariant(typ) {
+	} else if isVariant(typ) {
 		var maxAlign uint32 = 1
 		caseLayouts := make([]*TypeLayout, val.NumField())
 		for i := 0; i < val.NumField(); i++ {
@@ -111,6 +107,23 @@ func write(ctx context.Context, mem api.Memory, alloc *GuestAllocator, val refle
 			}
 		}
 		return fmt.Errorf("invalid variant: no case set")
+	} else if isFlags(typ) {
+		var bits uint64
+		for i := 0; i < val.NumField(); i++ {
+			if val.Field(i).Bool() {
+				bits |= (1 << i)
+			}
+		}
+		switch layout.Size {
+		case 1:
+			return check(mem.WriteByte(ptr, byte(bits)))
+		case 2:
+			return check(mem.WriteUint16Le(ptr, uint16(bits)))
+		case 4:
+			return check(mem.WriteUint32Le(ptr, uint32(bits)))
+		case 8:
+			return check(mem.WriteUint64Le(ptr, bits))
+		}
 	}
 
 	switch val.Kind() {
@@ -170,36 +183,44 @@ func liftString(ctx context.Context, mem api.Memory, alloc *GuestAllocator, s st
 	return nil
 }
 
+// liftSlice is now generic for any element type.
 func liftSlice(ctx context.Context, mem api.Memory, alloc *GuestAllocator, val reflect.Value, ptr uint32) error {
 	elemLayout, err := GetOrCalculateLayout(val.Type().Elem())
 	if err != nil {
 		return err
 	}
 	sliceLen := val.Len()
-	contentSize := uint32(sliceLen) * elemLayout.Size
+
+	// Stride is the size of each element "slot" in the array, including padding.
+	stride := align(elemLayout.Size, elemLayout.Alignment)
+
+	var contentSize uint32
+	if sliceLen > 0 {
+		// The total size is the start of the last element plus its own size.
+		contentSize = (uint32(sliceLen-1) * stride) + elemLayout.Size
+	}
 
 	contentPtr, err := alloc.Allocate(ctx, contentSize, elemLayout.Alignment)
 	if err != nil {
 		return err
 	}
 
-	if elemLayout.Size == 1 { // Handle byte slices directly
-		header := (*reflect.SliceHeader)(unsafe.Pointer(val.Addr().UnsafePointer()))
-		data := unsafe.Slice((*byte)(unsafe.Pointer(header.Data)), header.Len)
-		if !mem.Write(contentPtr, data) {
-			return fmt.Errorf("memory write failed for slice content at ptr %d", contentPtr)
+	// Write each element recursively at the correct stride-based offset.
+	for i := 0; i < sliceLen; i++ {
+		elemVal := val.Index(i)
+		// Calculate the precise starting pointer for the current element.
+		elemPtr := contentPtr + (uint32(i) * stride)
+
+		if err := write(ctx, mem, alloc, elemVal, elemPtr, elemLayout); err != nil {
+			return fmt.Errorf("failed to write slice element %d: %w", i, err)
 		}
-	} else {
-		return fmt.Errorf("lifting non-byte slices requires recursive writes (not yet implemented)")
 	}
 
+	// Write the {ptr, len} header.
 	buf := make([]byte, 8)
 	binary.LittleEndian.PutUint32(buf[0:4], contentPtr)
 	binary.LittleEndian.PutUint32(buf[4:8], uint32(sliceLen))
-	if !mem.Write(ptr, buf) {
-		return fmt.Errorf("memory write failed for slice header at ptr %d", ptr)
-	}
-	return nil
+	return check(mem.Write(ptr, buf))
 }
 
 func liftArray(ctx context.Context, mem api.Memory, alloc *GuestAllocator, val reflect.Value, ptr uint32) error {
@@ -235,4 +256,11 @@ func boolToByte(b bool) byte {
 		return 1
 	}
 	return 0
+}
+
+func check(ok bool) error {
+	if !ok {
+		return fmt.Errorf("memory access failed")
+	}
+	return nil
 }
