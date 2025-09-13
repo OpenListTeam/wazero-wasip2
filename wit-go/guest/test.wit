@@ -1,0 +1,33 @@
+package local:test;
+
+world test-world {
+    // A record type with various fields.
+    record my-data {
+        a: u32,
+        b: string,
+        c: list<u8>,
+    }
+
+    // A function imported from the host.
+    import host-log: func(msg: string);
+
+    // Functions exported by the guest.
+    export process-string: func(s: string);
+    export roundtrip-string: func(s: string) -> string;
+    export create-data: func() -> my-data;
+
+    enum color {
+        red,
+        green,
+        blue,
+    }
+
+    variant shape {
+        circle(f32),
+        rect(tuple<u32, u32>),
+    }
+
+    export handle-option: func(opt: option<string>) -> option<u32>;
+    export handle-result: func(res: result<string, color>) -> result<u32, color>;
+    export handle-variant: func(s: shape) -> string;
+}
