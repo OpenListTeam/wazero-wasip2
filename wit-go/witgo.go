@@ -32,15 +32,15 @@ func (h *Host) Call(ctx context.Context, funcName string, resultPtr interface{},
 		return fmt.Errorf("function '%s' not found in guest exports", funcName)
 	}
 
-	var flatParams []uint64
-
+	flatParams := make([]uint64, 0, 16)
 	for _, p := range params {
-		pFlat, err := h.flattenParam(ctx, reflect.ValueOf(p))
+		// Pass a pointer to the slice to be appended to.
+		err := h.flattenParam(ctx, reflect.ValueOf(p), &flatParams)
 		if err != nil {
 			return fmt.Errorf("failed to flatten parameter %#v: %w", p, err)
 		}
-		flatParams = append(flatParams, pFlat...)
 	}
+
 	// Execute the raw Wasm call.
 	// CRITICAL FIX: No `retptr` is ever passed as a parameter for single-return functions.
 	results, err := fn.Call(ctx, flatParams...)

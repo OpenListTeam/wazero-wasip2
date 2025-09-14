@@ -36,15 +36,6 @@ func GetOrCalculateLayout(typ reflect.Type) (*TypeLayout, error) {
 }
 
 func calculateLayout(typ reflect.Type) (*TypeLayout, error) {
-	// Check for our special generic types first.
-	// This is a simplified check; a real library might need more robust reflection.
-	if typ.Name() == "Option" && typ.NumField() == 2 {
-		return calculateSumLayout(typ, 0, []reflect.Type{typ.Field(1).Type})
-	}
-	if typ.Name() == "Result" && typ.NumField() == 3 {
-		return calculateSumLayout(typ, 0, []reflect.Type{typ.Field(1).Type, typ.Field(2).Type})
-	}
-
 	// Check for tagged variant structs
 	if isVariant(typ) {
 		return calculateSumLayout(typ, 0, getVariantCaseTypes(typ))
@@ -65,6 +56,9 @@ func calculateLayout(typ reflect.Type) (*TypeLayout, error) {
 		return calculateStructLayout(typ)
 	case reflect.Array:
 		return calculateArrayLayout(typ)
+	case reflect.Pointer:
+		// The layout of a pointer is the layout of the element it points to.
+		return GetOrCalculateLayout(typ.Elem())
 	default:
 		return nil, fmt.Errorf("unsupported type for layout calculation: %v", typ)
 	}

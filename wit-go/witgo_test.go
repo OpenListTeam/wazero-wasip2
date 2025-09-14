@@ -54,6 +54,14 @@ type ComplexRecord struct {
 	ShapeInfo   Result[Shape, string]
 }
 
+// Corresponds to the `tuple<u32, u8, string>` in WIT.
+// We use a struct because Go arrays are homogeneous.
+type HeteroTuple struct {
+	F0 uint32
+	F1 uint8
+	F2 string
+}
+
 func TestWitGo(t *testing.T) {
 	ctx := context.Background()
 
@@ -66,21 +74,40 @@ func TestWitGo(t *testing.T) {
 
 	// 3. Create a host module to provide imported functions to the guest.
 	var hostLogBuffer string
-	_, err := r.NewHostModuleBuilder("$root").
-		NewFunctionBuilder().
-		// This function signature matches the flattened ABI for a string parameter: (ptr, len).
-		WithFunc(func(ctx context.Context, ptr, len uint32) {
-			// Get a reference to the guest's memory.
-			mem := r.Module("test-instance").Memory()
-			msg, ok := mem.Read(ptr, len)
-			require.True(t, ok, "failed to read imported string from guest memory")
+	// _, err := r.NewHostModuleBuilder("$root").
+	// 	NewFunctionBuilder().
+	// 	// This function signature matches the flattened ABI for a string parameter: (ptr, len).
+	// 	WithFunc(func(ctx context.Context, ptr, len uint32) {
+	// 		// Get a reference to the guest's memory.
+	// 		mem := r.Module("test-instance").Memory()
+	// 		msg, ok := mem.Read(ptr, len)
+	// 		require.True(t, ok, "failed to read imported string from guest memory")
 
-			// Store and print the message.
-			hostLogBuffer = string(msg)
-			fmt.Printf("[HOST LOG]: %s\n", hostLogBuffer)
-		}).
-		Export("host-log").
-		Instantiate(ctx)
+	// 		// Store and print the message.
+	// 		hostLogBuffer = string(msg)
+	// 		fmt.Printf("[HOST LOG]: %s\n", hostLogBuffer)
+	// 	}).
+	// 	Export("host-log").
+	// 	Instantiate(ctx)
+	// require.NoError(t, err)
+
+	builder := r.NewHostModuleBuilder("$root")
+	err := Export(builder, "host-log", func(msg string) {
+		hostLogBuffer = msg
+		fmt.Printf("[HOST LOG]: %s\n", hostLogBuffer)
+	})
+	require.NoError(t, err)
+	err = Export(builder, "invert-bytes", func(data []byte) []byte {
+		reversed := make([]byte, len(data))
+		for i, b := range data {
+			reversed[len(data)-1-i] = b
+		}
+		return reversed
+	})
+	require.NoError(t, err)
+
+	// Instantiate the host module.
+	_, err = builder.Instantiate(ctx)
 	require.NoError(t, err)
 
 	// 4. Instantiate the guest module.
@@ -141,8 +168,8 @@ func TestWitGo(t *testing.T) {
 		err := host.Call(ctx, "handle-option", &result, input)
 		require.NoError(t, err)
 
-		require.True(t, result.HasValue)
-		assert.Equal(t, uint32(len("this is a test")), result.Value)
+		require.True(t, result.Some != nil)
+		assert.Equal(t, uint32(len("this is a test")), *result.Some)
 	})
 
 	t.Run("Roundtrip Option: None value", func(t *testing.T) {
@@ -150,7 +177,7 @@ func TestWitGo(t *testing.T) {
 		input := None[string]()
 		err := host.Call(ctx, "handle-option", &result, input)
 		require.NoError(t, err)
-		assert.False(t, result.HasValue)
+		assert.True(t, result.None != nil)
 	})
 
 	t.Run("Roundtrip Result: Ok value", func(t *testing.T) {
@@ -159,8 +186,8 @@ func TestWitGo(t *testing.T) {
 		err := host.Call(ctx, "handle-result", &result, input)
 		require.NoError(t, err)
 
-		require.False(t, result.IsErr)
-		assert.Equal(t, uint32(len("success")), result.Ok)
+		require.True(t, result.Ok != nil)
+		assert.Equal(t, uint32(len("success")), *result.Ok)
 	})
 
 	t.Run("Roundtrip Result: Err value", func(t *testing.T) {
@@ -169,8 +196,8 @@ func TestWitGo(t *testing.T) {
 		err := host.Call(ctx, "handle-result", &result, input)
 		require.NoError(t, err)
 
-		require.True(t, result.IsErr)
-		assert.Equal(t, ColorBlue, result.Err)
+		require.True(t, result.Err != nil)
+		assert.Equal(t, ColorBlue, *result.Err)
 	})
 
 	t.Run("Host to Guest: Variant", func(t *testing.T) {
@@ -234,5 +261,20 @@ func TestWitGo(t *testing.T) {
 		// ShapeInfo is Circle -> +50
 		// Total: 14 + 100 + 2000 + 30 + 50 = 2194
 		assert.Equal(t, uint32(2194), result)
+	})
+
+	t.Run("Handle Heterogeneous Tuple", func(t *testing.T) {
+		var result string
+		input := HeteroTuple{
+			F0: 99,
+			F1: 255,
+			F2: "tuple test",
+		}
+
+		// Our existing struct handling logic should flatten this correctly.
+		err := host.Call(ctx, "handle-hetero-tuple", &result, input)
+		require.NoError(t, err)
+
+		assert.Equal(t, "Got tuple: (99, 255, 'tuple test')", result)
 	})
 }

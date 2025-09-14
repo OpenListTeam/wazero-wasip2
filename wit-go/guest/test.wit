@@ -53,4 +53,8 @@ world test-world {
     }
 
     export handle-complex-record: func(r: complex-record) -> u32;
+
+    export handle-hetero-tuple: func(t: tuple<u32, u8, string>) -> string;
+
+    export noop-complex: func(r: complex-record);
 }

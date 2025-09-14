@@ -122,6 +122,15 @@ impl Guest for MyGuest {
         host_log(&format!("Guest processed complex record, checksum: {}", check_sum));
         check_sum
     }
+
+    fn handle_hetero_tuple(t: (u32, u8, String)) -> String {
+        format!("Got tuple: ({}, {}, '{}')", t.0, t.1, t.2)
+    }
+
+    fn noop_complex(_r: ComplexRecord) {
+        // This function does nothing. It's used to benchmark the overhead
+        // of lifting the complex-record parameter from the host.
+    }
 }
 
 // Export the implementation.

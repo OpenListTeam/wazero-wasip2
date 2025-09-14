@@ -1,34 +1,35 @@
 package witgo
 
-// Option represents a WIT option<T>.
+type Unit struct{}
+
 type Option[T any] struct {
-	HasValue bool
-	Value    T
+	None *Unit `wit:"case(0)"` // Case 0: "none", has no payload
+	Some *T    `wit:"case(1)"` // Case 1: "some", has a payload of type T
 }
 
 // Some creates an option with a value.
 func Some[T any](value T) Option[T] {
-	return Option[T]{HasValue: true, Value: value}
+	return Option[T]{Some: &value}
 }
 
 // None creates an option with no value.
 func None[T any]() Option[T] {
-	return Option[T]{HasValue: false}
+	return Option[T]{None: &Unit{}}
 }
 
-// Result represents a WIT result<T, E>.
+// VariantResult demonstrates implementing a result using the variant structure.
+// It is ABI-equivalent to result<T, E>.
 type Result[T, E any] struct {
-	IsErr bool
-	Ok    T
-	Err   E
+	Ok  *T `wit:"case(0)"` // Case 0: "ok", has a payload of type T
+	Err *E `wit:"case(1)"` // Case 1: "error", has a payload of type E
 }
 
 // Ok creates a successful result.
 func Ok[T any, E any](value T) Result[T, E] {
-	return Result[T, E]{IsErr: false, Ok: value}
+	return Result[T, E]{Ok: &value}
 }
 
 // Err creates an error result.
 func Err[T any, E any](err E) Result[T, E] {
-	return Result[T, E]{IsErr: true, Err: err}
+	return Result[T, E]{Err: &err}
 }

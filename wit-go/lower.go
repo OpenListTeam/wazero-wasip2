@@ -39,52 +39,7 @@ func LowerSliceFromParts(mem api.Memory, ptr, length uint32) ([]byte, error) {
 func read(ctx context.Context, mem api.Memory, ptr uint32, val reflect.Value, layout *TypeLayout) error {
 	typ := val.Type()
 
-	if isOption(typ) {
-		disc, ok := mem.ReadByte(ptr)
-		if !ok {
-			return fmt.Errorf("failed to read option discriminant")
-		}
-		val.FieldByName("HasValue").SetBool(disc == 1) // Changed from "hasValue"
-		if disc == 1 {
-			valueField := val.FieldByName("Value") // Changed from "value"
-			valueLayout, err := GetOrCalculateLayout(valueField.Type())
-			if err != nil {
-				return err
-			}
-			payloadOffset := align(1, valueLayout.Alignment)
-			return read(ctx, mem, ptr+payloadOffset, valueField, valueLayout)
-		}
-		return nil
-	} else if isResult(typ) {
-		okField := val.FieldByName("Ok")
-		errField := val.FieldByName("Err")
-		okLayout, err := GetOrCalculateLayout(okField.Type())
-		if err != nil {
-			return err
-		}
-		errLayout, err := GetOrCalculateLayout(errField.Type())
-		if err != nil {
-			return err
-		}
-
-		maxAlign := okLayout.Alignment
-		if errLayout.Alignment > maxAlign {
-			maxAlign = errLayout.Alignment
-		}
-		payloadOffset := align(1, maxAlign)
-
-		disc, ok := mem.ReadByte(ptr)
-		if !ok {
-			return fmt.Errorf("failed to read result discriminant")
-		}
-		isErr := (disc == 1)
-		val.FieldByName("IsErr").SetBool(isErr)
-
-		if isErr {
-			return read(ctx, mem, ptr+payloadOffset, errField, errLayout)
-		}
-		return read(ctx, mem, ptr+payloadOffset, okField, okLayout)
-	} else if isVariant(typ) {
+	if isVariant(typ) {
 		var maxAlign uint32 = 1
 		caseLayouts := make([]*TypeLayout, val.NumField())
 		for i := 0; i < val.NumField(); i++ {

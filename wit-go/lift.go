@@ -30,49 +30,7 @@ func Lift(ctx context.Context, mem api.Memory, alloc *GuestAllocator, val reflec
 func write(ctx context.Context, mem api.Memory, alloc *GuestAllocator, val reflect.Value, ptr uint32, layout *TypeLayout) error {
 	typ := val.Type()
 
-	if isOption(typ) {
-		hasValue := val.FieldByName("HasValue").Bool() // Changed from "hasValue"
-		if !mem.WriteByte(ptr, boolToByte(hasValue)) {
-			return fmt.Errorf("failed to write option discriminant")
-		}
-		if hasValue {
-			valueField := val.FieldByName("Value") // Changed from "value"
-			valueLayout, err := GetOrCalculateLayout(valueField.Type())
-			if err != nil {
-				return err
-			}
-			payloadOffset := align(1, valueLayout.Alignment)
-			return write(ctx, mem, alloc, valueField, ptr+payloadOffset, valueLayout)
-		}
-		return nil
-	} else if isResult(typ) {
-		okField := val.FieldByName("Ok")
-		errField := val.FieldByName("Err")
-		okLayout, err := GetOrCalculateLayout(okField.Type())
-		if err != nil {
-			return err
-		}
-		errLayout, err := GetOrCalculateLayout(errField.Type())
-		if err != nil {
-			return err
-		}
-
-		maxAlign := okLayout.Alignment
-		if errLayout.Alignment > maxAlign {
-			maxAlign = errLayout.Alignment
-		}
-		payloadOffset := align(1, maxAlign) //disc size is 1
-
-		isErr := val.FieldByName("IsErr").Bool()
-		if !mem.WriteByte(ptr, boolToByte(isErr)) {
-			return fmt.Errorf("failed to write result discriminant")
-		}
-
-		if isErr {
-			return write(ctx, mem, alloc, errField, ptr+payloadOffset, errLayout)
-		}
-		return write(ctx, mem, alloc, okField, ptr+payloadOffset, okLayout)
-	} else if isVariant(typ) {
+	if isVariant(typ) {
 		var maxAlign uint32 = 1
 		caseLayouts := make([]*TypeLayout, val.NumField())
 		for i := 0; i < val.NumField(); i++ {
