@@ -28,12 +28,7 @@ func setupBenchmark(b *testing.B) (context.Context, *Host, api.Module) {
 	wasi_snapshot_preview1.MustInstantiate(ctx, r)
 
 	// We don't need the host logger for benchmarks, so we provide a no-op implementation.
-	builder := r.NewHostModuleBuilder("$root")
-	err := Export(builder, "host-log", func(msg string) {})
-	require.NoError(b, err)
-
-	// Instantiate the host module.
-	_, err = builder.Instantiate(ctx)
+	_, err := NewExporter(r.NewHostModuleBuilder("$root")).MustExport("host-log", func(msg string) {}).Instantiate(ctx)
 	require.NoError(b, err)
 
 	mod, err := r.InstantiateWithConfig(ctx, guestWasm, wazero.NewModuleConfig().WithName("benchmark-instance"))

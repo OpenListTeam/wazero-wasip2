@@ -131,6 +131,14 @@ impl Guest for MyGuest {
         // This function does nothing. It's used to benchmark the overhead
         // of lifting the complex-record parameter from the host.
     }
+
+
+    fn call_complex_host_func(req: HostRequest) -> String {
+        host_log("Guest is calling complex host function 'process-host-request'");
+        host_log(&format!("Guest req {:?}", req));
+        // Pass the received record directly to the imported host function.
+        process_host_request(&req)
+    }
 }
 
 // Export the implementation.

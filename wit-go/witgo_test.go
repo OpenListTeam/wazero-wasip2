@@ -45,7 +45,7 @@ type Permissions struct {
 	Execute bool
 }
 
-func (*Permissions) IsFlags() {}
+func (Permissions) IsFlags() {}
 
 type ComplexRecord struct {
 	ID          string
@@ -60,6 +60,13 @@ type HeteroTuple struct {
 	F0 uint32
 	F1 uint8
 	F2 string
+}
+
+// Corresponds to the `host-request` record in WIT.
+type HostRequest struct {
+	ID     string
+	Data   []MyData
+	Config Option[Permissions]
 }
 
 func TestWitGo(t *testing.T) {
@@ -91,23 +98,35 @@ func TestWitGo(t *testing.T) {
 	// 	Instantiate(ctx)
 	// require.NoError(t, err)
 
-	builder := r.NewHostModuleBuilder("$root")
-	err := Export(builder, "host-log", func(msg string) {
-		hostLogBuffer = msg
-		fmt.Printf("[HOST LOG]: %s\n", hostLogBuffer)
-	})
-	require.NoError(t, err)
-	err = Export(builder, "invert-bytes", func(data []byte) []byte {
-		reversed := make([]byte, len(data))
-		for i, b := range data {
-			reversed[len(data)-1-i] = b
-		}
-		return reversed
-	})
-	require.NoError(t, err)
+	// 1. Create an Exporter that wraps the wazero builder.
+	exporter := NewExporter(r.NewHostModuleBuilder("$root"))
 
-	// Instantiate the host module.
-	_, err = builder.Instantiate(ctx)
+	// 2. Use the chainable, "Must" variant to export functions.
+	_, err := exporter.
+		MustExport("host-log", func(msg string) {
+			hostLogBuffer = msg
+			fmt.Printf("[HOST LOG]: %s\n", hostLogBuffer)
+		}).
+		MustExport("invert-bytes", func(data []byte) []byte {
+			reversed := make([]byte, len(data))
+			for i, b := range data {
+				reversed[len(data)-1-i] = b
+			}
+			return reversed
+		}).
+		MustExport("process-host-request", func(req HostRequest) string {
+			// Build a summary string based on the complex input.
+			summary := fmt.Sprintf("Received request %s with %d data records.", req.ID, len(req.Data))
+			if req.Config.Some != nil {
+				if req.Config.Some.Write {
+					summary += " Write permission is enabled."
+				}
+			} else {
+				summary += " No config provided."
+			}
+			return summary
+		}).
+		Instantiate(ctx)
 	require.NoError(t, err)
 
 	// 4. Instantiate the guest module.
@@ -276,5 +295,23 @@ func TestWitGo(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.Equal(t, "Got tuple: (99, 255, 'tuple test')", result)
+	})
+
+	t.Run("Call Complex Host Function", func(t *testing.T) {
+		var result string
+		input := HostRequest{
+			ID: "request-ABC",
+			Data: []MyData{
+				{A: 1, B: "first", C: []byte{1}},
+				{A: 2, B: "second", C: []byte{2}},
+			},
+			Config: Some(Permissions{Read: true, Write: true}),
+		}
+
+		err := host.Call(ctx, "call-complex-host-func", &result, input)
+		require.NoError(t, err)
+
+		expected := "Received request request-ABC with 2 data records. Write permission is enabled."
+		assert.Equal(t, expected, result)
 	})
 }

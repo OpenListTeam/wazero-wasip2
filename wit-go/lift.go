@@ -27,6 +27,17 @@ func Lift(ctx context.Context, mem api.Memory, alloc *GuestAllocator, val reflec
 	return ptr, nil
 }
 
+// LiftToPtr writes a Go value into a pre-allocated pointer in guest memory.
+// This is used for host exports that return complex types.
+func LiftToPtr(ctx context.Context, mem api.Memory, alloc *GuestAllocator, val reflect.Value, ptr uint32) error {
+	layout, err := GetOrCalculateLayout(val.Type())
+	if err != nil {
+		return err
+	}
+	// We don't allocate a new pointer; we write directly into the one provided.
+	return write(ctx, mem, alloc, val, ptr, layout)
+}
+
 func write(ctx context.Context, mem api.Memory, alloc *GuestAllocator, val reflect.Value, ptr uint32, layout *TypeLayout) error {
 	typ := val.Type()
 

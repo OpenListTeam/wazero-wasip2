@@ -57,4 +57,16 @@ world test-world {
     export handle-hetero-tuple: func(t: tuple<u32, u8, string>) -> string;
 
     export noop-complex: func(r: complex-record);
+
+    record host-request {
+      id: string,
+      data: list<my-data>,
+      config: option<permissions>,
+    }
+
+    // --- NEW: Import a complex function from the host ---
+    import process-host-request: func(req: host-request) -> string;
+    
+    // --- NEW: Export a function that calls the complex import ---
+    export call-complex-host-func: func(req: host-request) -> string;
 }
