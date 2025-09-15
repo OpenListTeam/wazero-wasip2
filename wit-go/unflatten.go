@@ -252,7 +252,16 @@ func (e *Exporter) makeWrapperFunc(funcType reflect.Type, funcVal reflect.Value)
 		}
 
 		callArgs := make([]reflect.Value, funcType.NumIn())
-		for i := 0; i < funcType.NumIn(); i++ {
+		funcParamIndex := 0
+
+		// Check if the user's function expects a context as its first argument.
+		if funcType.NumIn() > 0 && funcType.In(0) == reflect.TypeFor[context.Context]() {
+			callArgs[0] = args[0] // Pass the context from wazero.
+			funcParamIndex = 1    // The next Go func param starts at index 1.
+		}
+
+		// Unflatten the Wasm parameters into the remaining Go function arguments.
+		for i := funcParamIndex; i < funcType.NumIn(); i++ {
 			paramType := funcType.In(i)
 			val, err := h.unflattenParam(ctx, module.Memory(), paramStream, paramType)
 			if err != nil {
@@ -284,9 +293,15 @@ func (e *Exporter) makeWrapperFunc(funcType reflect.Type, funcVal reflect.Value)
 // It also returns a boolean indicating if a return pointer is needed.
 func (e *Exporter) flattenSignatureTypes(funcType reflect.Type) ([]reflect.Type, bool, error) {
 	var flatTypes []reflect.Type
+	count := funcType.NumIn()
+
+	startIndex := 0
+	if count > 0 && funcType.In(0) == reflect.TypeFor[context.Context]() {
+		startIndex = 1
+	}
 
 	// Flatten all input parameters.
-	for i := 0; i < funcType.NumIn(); i++ {
+	for i := startIndex; i < count; i++ {
 		typ := funcType.In(i)
 		var flatShape []uint64
 		err := e.dummyHost.flattenParam(context.Background(), reflect.Zero(typ), &flatShape)

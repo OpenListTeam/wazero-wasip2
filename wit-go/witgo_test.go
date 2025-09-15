@@ -103,7 +103,7 @@ func TestWitGo(t *testing.T) {
 
 	// 2. Use the chainable, "Must" variant to export functions.
 	_, err := exporter.
-		MustExport("host-log", func(msg string) {
+		MustExport("host-log", func(ctx context.Context, msg string) {
 			hostLogBuffer = msg
 			fmt.Printf("[HOST LOG]: %s\n", hostLogBuffer)
 		}).
