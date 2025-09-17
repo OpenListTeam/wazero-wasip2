@@ -40,24 +40,33 @@ func (i *futureTrailersImpl) Get(this FutureTrailers) witgo.Option[witgo.Result[
 	if !ok {
 		return witgo.None[witgo.Result[witgo.Result[witgo.Option[Trailers], ErrorCode], witgo.Unit]]()
 	}
+
 	res := f.Result.Load()
 	if res == nil {
+		// Future 尚未就绪
 		return witgo.None[witgo.Result[witgo.Result[witgo.Option[Trailers], ErrorCode], witgo.Unit]]()
 	}
 
 	if f.Consumed.Swap(true) {
-		// Already consumed
+		// 资源已被消费，后续调用返回错误
 		return witgo.Some(witgo.Err[witgo.Result[witgo.Option[Trailers], ErrorCode], witgo.Unit](witgo.Unit{}))
 	}
 
 	if res.Err != nil {
-		// TODO: Convert Go error to ErrorCode
+		// 读取 body 过程中发生错误
+		errorCode := ErrorCode{InternalError: witgo.SomePtr(res.Err.Error())}
 		return witgo.Some(witgo.Ok[witgo.Result[witgo.Option[Trailers], ErrorCode], witgo.Unit](
-			witgo.Err[witgo.Option[Trailers], ErrorCode](ErrorCode{InternalError: witgo.SomePtr(res.Err.Error())}),
+			witgo.Err[witgo.Option[Trailers], ErrorCode](errorCode),
 		))
 	}
 
-	trailers := witgo.Some(res.TrailersHandle)
+	var trailers witgo.Option[Trailers]
+	if res.TrailersHandle != 0 {
+		trailers = witgo.Some(res.TrailersHandle)
+	} else {
+		trailers = witgo.None[Trailers]()
+	}
+
 	return witgo.Some(witgo.Ok[witgo.Result[witgo.Option[Trailers], ErrorCode], witgo.Unit](
 		witgo.Ok[witgo.Option[Trailers], ErrorCode](trailers),
 	))

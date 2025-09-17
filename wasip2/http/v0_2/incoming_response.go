@@ -51,9 +51,9 @@ func (i *incomingResponseImpl) Consume(_ context.Context, this IncomingResponse)
 	resp.BodyConsumed = true
 
 	// 创建一个 incoming-body 资源来包装 Go 的 http.Response.Body
-	body := &http.IncomingBody{Body: resp.Response.Body}
-	handle := i.hm.IncomingBodies.Add(body)
-	resp.BodyHandle = handle
+	// body := &http.IncomingBody{Body: resp.Response.Body}
+	// handle := i.hm.IncomingBodies.Add(body)
+	// resp.BodyHandle = handle
 
-	return witgo.Ok[IncomingBody, witgo.Unit](handle)
+	return witgo.Ok[IncomingBody, witgo.Unit](resp.BodyHandle)
 }

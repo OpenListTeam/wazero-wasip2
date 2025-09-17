@@ -68,6 +68,7 @@ type ResponseOutparam struct {
 type IncomingBody struct {
 	Body         io.ReadCloser
 	StreamHandle uint32 // 指向 input-stream 的句柄
+	StreamTaken  bool   // 标记 stream 是否已经被取出
 	Trailers     uint32 // 指向 future-trailers 的句柄
 }
 

@@ -2,12 +2,15 @@ package v0_2
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	gohttp "net/http"
 	"strings"
 	"time"
 	"wazero-wasip2/internal/http"
+	"wazero-wasip2/internal/streams"
 	witgo "wazero-wasip2/wit-go"
 
 	lru "github.com/hashicorp/golang-lru/v2"
@@ -102,6 +105,63 @@ func (i *outgoingHandlerImpl) Handle(
 	return witgo.Ok[FutureIncomingResponse, ErrorCode](futureHandle)
 }
 
+// executeRequest 在一个单独的 goroutine 中运行。
+func (i *outgoingHandlerImpl) executeRequest(client *gohttp.Client, goReq *gohttp.Request, future *http.FutureIncomingResponse) {
+	// 使用 Go 的默认 HTTP 客户端执行请求。
+	resp, err := client.Do(goReq)
+
+	// 将结果（成功或失败）发送到 future 的 channel 中。
+	if err != nil {
+		future.ResultChan <- http.Result{
+			Err: err,
+		}
+		return
+	}
+
+	// 1. 转换 Headers
+	respHeaders := make(http.Fields)
+	for k, v := range resp.Header {
+		respHeaders[strings.ToLower(k)] = v
+	}
+	headersHandle := i.hm.Fields.Add(respHeaders)
+
+	// 2. 创建 FutureTrailers 资源
+	futureTrailers := &http.FutureTrailers{
+		ResultChan: make(chan http.ResultTrailers, 1),
+	}
+	futureTrailersID := i.hm.FutureTrailers.Add(futureTrailers)
+
+	// 3. 创建一个包装了 trailers 逻辑的 reader，并为其创建 input-stream
+	bodyReader := &trailerReader{
+		body:         resp.Body,
+		trailers:     resp.Trailer,
+		trailersChan: futureTrailers.ResultChan,
+		fieldsMgr:    i.hm.Fields,
+	}
+	streamID := i.hm.Streams.Add(&streams.Stream{Reader: bodyReader, Closer: bodyReader})
+
+	// 4. 创建 IncomingBody，并链接 stream 和 future-trailers
+	body := &http.IncomingBody{
+		Body:         bodyReader,
+		StreamHandle: streamID,
+		Trailers:     futureTrailersID,
+	}
+	bodyID := i.hm.IncomingBodies.Add(body)
+
+	// 5. 创建 IncomingResponse 资源, 并链接 body
+	incomingResponse := &http.IncomingResponse{
+		Response:   resp,
+		Headers:    headersHandle,
+		BodyHandle: bodyID, // 关键链接
+	}
+	responseHandle := i.hm.Responses.Add(incomingResponse)
+
+	// 6. 将成功的响应句柄发送到 channel。
+	future.ResultChan <- http.Result{
+		ResponseHandle: responseHandle,
+	}
+}
+
 // buildGoRequest 是一个辅助函数，用于将 wasi-http 请求转换为 Go 的 http.Request。
 func (i *outgoingHandlerImpl) buildGoRequest(req *http.OutgoingRequest) (*gohttp.Request, error) {
 	// 构造 URL
@@ -133,40 +193,37 @@ func (i *outgoingHandlerImpl) buildGoRequest(req *http.OutgoingRequest) (*gohttp
 	return goReq, nil
 }
 
-// executeRequest 在一个单独的 goroutine 中运行。
-func (i *outgoingHandlerImpl) executeRequest(client *gohttp.Client, goReq *gohttp.Request, future *http.FutureIncomingResponse) {
-	// 使用 Go 的默认 HTTP 客户端执行请求。
-	resp, err := client.Do(goReq)
+// trailerReader 包装了 http.Response.Body，用于在读取到 EOF 时，
+// 将 trailers 发送到 channel 中。
+type trailerReader struct {
+	body         io.ReadCloser
+	trailers     gohttp.Header
+	trailersChan chan<- http.ResultTrailers
+	fieldsMgr    *http.FieldsManager
+	sent         bool
+}
 
-	// 将结果（成功或失败）发送到 future 的 channel 中。
-	if err != nil {
-		// 如果网络请求失败，我们创建一个 error 资源。
-		// 这里的实现可以更精细，将 Go 的 net.Error 映射到具体的 wasi:http/types.error-code。
-		// 为简化起见，我们统一使用 InternalError。
-		future.ResultChan <- http.Result{
-			Err: err,
-		}
-		return
+func (r *trailerReader) Read(p []byte) (n int, err error) {
+	n, err = r.body.Read(p)
+	if err == io.EOF && !r.sent {
+		r.sendTrailers(nil)
 	}
+	return
+}
 
-	// 请求成功，我们将 http.Response 转换为我们的 wasi-http 资源。
-
-	// 1. 转换 Headers
-	respHeaders := make(http.Fields)
-	for k, v := range resp.Header {
-		respHeaders[strings.ToLower(k)] = v
+func (r *trailerReader) Close() error {
+	if !r.sent {
+		r.sendTrailers(errors.New("body closed before trailers were received"))
 	}
-	headersHandle := i.hm.Fields.Add(respHeaders)
+	return r.body.Close()
+}
 
-	// 2. 创建 IncomingResponse 资源
-	incomingResponse := &http.IncomingResponse{
-		Response: resp,
-		Headers:  headersHandle,
+func (r *trailerReader) sendTrailers(err error) {
+	r.sent = true
+	var trailersID uint32
+	if err == nil && len(r.trailers) > 0 {
+		trailersID = r.fieldsMgr.Add(http.Fields(r.trailers))
 	}
-	responseHandle := i.hm.Responses.Add(incomingResponse)
-
-	// 3. 将成功的响应句柄发送到 channel。
-	future.ResultChan <- http.Result{
-		ResponseHandle: responseHandle,
-	}
+	r.trailersChan <- http.ResultTrailers{TrailersHandle: trailersID, Err: err}
+	close(r.trailersChan)
 }
