@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -69,6 +70,34 @@ type HostRequest struct {
 	Config Option[Permissions]
 }
 
+func ExporterTestHostFunc(exporter *Exporter) {
+	// --- Export plain scalar identity functions ---
+	exporter.MustExport("host-test-u8", func(v uint8) uint8 { return v })
+	exporter.MustExport("host-test-s8", func(v int8) int8 { return v })
+	exporter.MustExport("host-test-u16", func(v uint16) uint16 { return v })
+	exporter.MustExport("host-test-s16", func(v int16) int16 { return v })
+	exporter.MustExport("host-test-u32", func(v uint32) uint32 { return v })
+	exporter.MustExport("host-test-s32", func(v int32) int32 { return v })
+	exporter.MustExport("host-test-u64", func(v uint64) uint64 { return v })
+	exporter.MustExport("host-test-s64", func(v int64) int64 { return v })
+	exporter.MustExport("host-test-float32", func(v float32) float32 { return v })
+	exporter.MustExport("host-test-float64", func(v float64) float64 { return v })
+	exporter.MustExport("host-test-bool", func(v bool) bool { return v })
+
+	// --- Export Option<T> identity functions for all scalar types ---
+	exporter.MustExport("host-test-option-u8", func(v Option[uint8]) Option[uint8] { return v })
+	exporter.MustExport("host-test-option-s8", func(v Option[int8]) Option[int8] { return v })
+	exporter.MustExport("host-test-option-u16", func(v Option[uint16]) Option[uint16] { return v })
+	exporter.MustExport("host-test-option-s16", func(v Option[int16]) Option[int16] { return v })
+	exporter.MustExport("host-test-option-u32", func(v Option[uint32]) Option[uint32] { return v })
+	exporter.MustExport("host-test-option-s32", func(v Option[int32]) Option[int32] { return v })
+	exporter.MustExport("host-test-option-u64", func(v Option[uint64]) Option[uint64] { return v })
+	exporter.MustExport("host-test-option-s64", func(v Option[int64]) Option[int64] { return v })
+	exporter.MustExport("host-test-option-float32", func(v Option[float32]) Option[float32] { return v })
+	exporter.MustExport("host-test-option-float64", func(v Option[float64]) Option[float64] { return v })
+	exporter.MustExport("host-test-option-bool", func(v Option[bool]) Option[bool] { return v })
+}
+
 func TestWitGo(t *testing.T) {
 	ctx := context.Background()
 
@@ -81,25 +110,10 @@ func TestWitGo(t *testing.T) {
 
 	// 3. Create a host module to provide imported functions to the guest.
 	var hostLogBuffer string
-	// _, err := r.NewHostModuleBuilder("$root").
-	// 	NewFunctionBuilder().
-	// 	// This function signature matches the flattened ABI for a string parameter: (ptr, len).
-	// 	WithFunc(func(ctx context.Context, ptr, len uint32) {
-	// 		// Get a reference to the guest's memory.
-	// 		mem := r.Module("test-instance").Memory()
-	// 		msg, ok := mem.Read(ptr, len)
-	// 		require.True(t, ok, "failed to read imported string from guest memory")
-
-	// 		// Store and print the message.
-	// 		hostLogBuffer = string(msg)
-	// 		fmt.Printf("[HOST LOG]: %s\n", hostLogBuffer)
-	// 	}).
-	// 	Export("host-log").
-	// 	Instantiate(ctx)
-	// require.NoError(t, err)
 
 	// 1. Create an Exporter that wraps the wazero builder.
 	exporter := NewExporter(r.NewHostModuleBuilder("$root"))
+	ExporterTestHostFunc(exporter)
 
 	// 2. Use the chainable, "Must" variant to export functions.
 	_, err := exporter.
@@ -313,5 +327,56 @@ func TestWitGo(t *testing.T) {
 
 		expected := "Received request request-ABC with 2 data records. Write permission is enabled."
 		assert.Equal(t, expected, result)
+	})
+
+	t.Run("Test Scalars", func(t *testing.T) {
+		testGuestScalar(t, host, "u8", uint8(0), uint8(1), uint8(math.MaxUint8))
+		testGuestScalar(t, host, "s8", int8(math.MinInt8), int8(-1), int8(0), int8(1), int8(math.MaxInt8))
+		testGuestScalar(t, host, "u16", uint16(0), uint16(1), uint16(math.MaxUint16))
+		testGuestScalar(t, host, "s16", int16(math.MinInt16), int16(-1), int16(0), int16(1), int16(math.MaxInt16))
+		testGuestScalar(t, host, "u32", uint32(0), uint32(1), uint32(math.MaxUint32))
+		testGuestScalar(t, host, "s32", int32(math.MinInt32), int32(-1), int32(0), int32(1), int32(math.MaxInt32))
+		testGuestScalar(t, host, "u64", uint64(0), uint64(1), uint64(math.MaxUint64))
+		testGuestScalar(t, host, "s64", int64(math.MinInt64), int64(-1), int64(0), int64(1), int64(math.MaxInt64))
+		testGuestScalar(t, host, "float32", float32(-1), float32(0), float32(1), float32(math.SmallestNonzeroFloat32), float32(math.MaxFloat32))
+		testGuestScalar(t, host, "float64", float64(-1), float64(0), float64(1), math.SmallestNonzeroFloat64, math.MaxFloat64)
+		testGuestScalar(t, host, "bool", true, false)
+	})
+
+	t.Run("Verify Host Exports via Guest", func(t *testing.T) {
+		// This single call triggers all the assertions within the guest's
+		// `verify-host-scalars` function. If any rust `assert_eq!` fails,
+		// the guest will trap, and `host.Call` will return an error.
+		err := host.Call(ctx, "verify-host-scalars", nil)
+		require.NoError(t, err, "guest trapped, indicating a failure in host export logic")
+	})
+}
+
+func testGuestScalar[T any](t *testing.T, host *Host, name string, values ...T) {
+	t.Run("guest-"+name, func(t *testing.T) {
+		for _, value := range values {
+			var result T
+			err := host.Call(t.Context(), "test-"+name, &result, value)
+			require.NoError(t, err)
+			assert.Equal(t, value, result)
+		}
+	})
+
+	t.Run("guest-option-"+name, func(t *testing.T) {
+		for _, value := range values {
+			var result Option[T]
+			err := host.Call(t.Context(), "test-option-"+name, &result, Some(value))
+			require.NoError(t, err)
+			assert.Equal(t, value, *result.Some)
+		}
+	})
+
+	t.Run("guest-result-"+name, func(t *testing.T) {
+		for _, value := range values {
+			var result Result[T, Unit]
+			err := host.Call(t.Context(), "test-result-"+name, &result, Ok[T, Unit](value))
+			require.NoError(t, err)
+			assert.Equal(t, value, *result.Ok)
+		}
 	})
 }

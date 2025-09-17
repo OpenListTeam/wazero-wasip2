@@ -106,13 +106,6 @@ func read(ctx context.Context, mem api.Memory, ptr uint32, val reflect.Value, la
 		return nil
 	}
 	switch val.Kind() {
-	case reflect.Uint8, reflect.Int8:
-		b, ok := mem.ReadByte(ptr)
-		if !ok {
-			return fmt.Errorf("memory read failed for byte at ptr %d", ptr)
-		}
-		val.SetUint(uint64(b))
-		return nil
 	case reflect.Bool:
 		b, ok := mem.ReadByte(ptr)
 		if !ok {
@@ -120,11 +113,59 @@ func read(ctx context.Context, mem api.Memory, ptr uint32, val reflect.Value, la
 		}
 		val.SetBool(b == 1)
 		return nil
-
-	case reflect.Uint32, reflect.Int32:
+	case reflect.Int8:
+		b, ok := mem.ReadByte(ptr)
+		if !ok {
+			return fmt.Errorf("memory read failed for byte at ptr %d", ptr)
+		}
+		val.SetInt(int64(b))
+		return nil
+	case reflect.Uint8:
+		b, ok := mem.ReadByte(ptr)
+		if !ok {
+			return fmt.Errorf("memory read failed for byte at ptr %d", ptr)
+		}
+		val.SetUint(uint64(b))
+		return nil
+	case reflect.Int16:
+		b, ok := mem.ReadUint16Le(ptr)
+		if !ok {
+			return fmt.Errorf("memory read failed for int16 at ptr %d", ptr)
+		}
+		val.SetInt(int64(b))
+		return nil
+	case reflect.Uint16:
+		i, ok := mem.ReadUint16Le(ptr)
+		if !ok {
+			return fmt.Errorf("memory read failed for uint16 at ptr %d", ptr)
+		}
+		val.SetUint(uint64(i))
+		return nil
+	case reflect.Int32:
+		b, ok := mem.ReadUint32Le(ptr)
+		if !ok {
+			return fmt.Errorf("memory read failed for int32 at ptr %d", ptr)
+		}
+		val.SetInt(int64(b))
+		return nil
+	case reflect.Uint32:
 		i, ok := mem.ReadUint32Le(ptr)
 		if !ok {
 			return fmt.Errorf("memory read failed for uint32 at ptr %d", ptr)
+		}
+		val.SetUint(uint64(i))
+		return nil
+	case reflect.Int64:
+		b, ok := mem.ReadUint64Le(ptr)
+		if !ok {
+			return fmt.Errorf("memory read failed for int64 at ptr %d", ptr)
+		}
+		val.SetInt(int64(b))
+		return nil
+	case reflect.Uint64:
+		i, ok := mem.ReadUint64Le(ptr)
+		if !ok {
+			return fmt.Errorf("memory read failed for uint64 at ptr %d", ptr)
 		}
 		val.SetUint(uint64(i))
 		return nil

@@ -62,10 +62,10 @@ func (h *Host) Call(ctx context.Context, funcName string, resultPtr interface{},
 
 		switch outVal.Kind() {
 		// Scalar types are returned directly as values.
-		case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-			reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		case reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 			outVal.SetUint(resultValue)
-
+		case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			outVal.SetInt(int64(resultValue))
 		case reflect.Float32:
 			outVal.SetFloat(float64(math.Float32frombits(uint32(resultValue))))
 

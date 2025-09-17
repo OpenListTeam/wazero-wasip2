@@ -40,9 +40,11 @@ func (h *Host) flattenParam(ctx context.Context, val reflect.Value, flatParams *
 	case reflect.Float64:
 		*flatParams = append(*flatParams, math.Float64bits(val.Float()))
 		return nil
-	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-		reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+	case reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		*flatParams = append(*flatParams, val.Uint())
+		return nil
+	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		*flatParams = append(*flatParams, uint64(val.Int()))
 		return nil
 	default:
 		return fmt.Errorf("unsupported parameter kind for flattening: %v", val.Kind())

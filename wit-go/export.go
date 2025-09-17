@@ -3,7 +3,6 @@ package witgo
 import (
 	"fmt"
 	"reflect"
-	"sync"
 
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
@@ -14,11 +13,10 @@ import (
 type Exporter struct {
 	wazero.HostModuleBuilder
 	hostCache map[api.Module]*Host
-	mu        sync.Mutex
-	dummyHost *Host // For shape calculation
+	// mu        sync.Mutex
 
 	// Cache for generated wrapper functions, mapping Go func type to the wrapper.
-	wrapperCache map[reflect.Type]interface{}
+	// wrapperCache map[reflect.Type]interface{}
 }
 
 // NewExporter creates a new Exporter that wraps a wazero.HostModuleBuilder.
@@ -26,8 +24,7 @@ func NewExporter(builder wazero.HostModuleBuilder) *Exporter {
 	return &Exporter{
 		HostModuleBuilder: builder,
 		hostCache:         make(map[api.Module]*Host),
-		dummyHost:         &Host{},
-		wrapperCache:      make(map[reflect.Type]interface{}),
+		// wrapperCache:      make(map[reflect.Type]interface{}),
 	}
 }
 
@@ -48,20 +45,18 @@ func (e *Exporter) Export(funcName string, goFunc interface{}) error {
 		return fmt.Errorf("`goFunc` must be a function, but got %T", goFunc)
 	}
 
-	// --- CACHING LOGIC START ---
-	e.mu.Lock()
-	wrapperFunc, found := e.wrapperCache[funcType]
-	if !found {
-		var err error
-		wrapperFunc, err = e.makeWrapperFunc(funcType, funcVal)
-		if err != nil {
-			e.mu.Unlock()
-			return fmt.Errorf("failed to create wrapper for %s: %w", funcName, err)
-		}
-		e.wrapperCache[funcType] = wrapperFunc
+	// e.mu.Lock()
+	// wrapperFunc, found := e.wrapperCache[funcType]
+	// if !found {
+	var err error
+	wrapperFunc, err := e.makeWrapperFunc(funcType, funcVal)
+	if err != nil {
+		// e.mu.Unlock()
+		return fmt.Errorf("failed to create wrapper for %s: %w", funcName, err)
 	}
-	e.mu.Unlock()
-	// --- CACHING LOGIC END ---
+	// e.wrapperCache[funcType] = wrapperFunc
+	// }
+	// e.mu.Unlock()
 
 	e.NewFunctionBuilder().WithFunc(wrapperFunc).Export(funcName)
 	return nil
@@ -69,12 +64,12 @@ func (e *Exporter) Export(funcName string, goFunc interface{}) error {
 
 // getHost is a helper on the Exporter to manage Host instances for guest callers.
 func (e *Exporter) getHost(module api.Module) (*Host, error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+	// e.mu.Lock()
+	// defer e.mu.Unlock()
 
-	if host, ok := e.hostCache[module]; ok {
-		return host, nil
-	}
+	// if host, ok := e.hostCache[module]; ok {
+	// 	return host, nil
+	// }
 	host, err := NewHost(module)
 	if err != nil {
 		return nil, err

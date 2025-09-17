@@ -139,6 +139,96 @@ impl Guest for MyGuest {
         // Pass the received record directly to the imported host function.
         process_host_request(&req)
     }
+
+        // Implementations for all scalar types
+        fn test_u8(v: u8) -> u8 { v }
+        fn test_s8(v: i8) -> i8 { v }
+        fn test_u16(v: u16) -> u16 { v }
+        fn test_s16(v: i16) -> i16 { v }
+        fn test_u32(v: u32) -> u32 { v }
+        fn test_s32(v: i32) -> i32 { v }
+        fn test_u64(v: u64) -> u64 { v }
+        fn test_s64(v: i64) -> i64 { v }
+        fn test_float32(v: f32) -> f32 { v }
+        fn test_float64(v: f64) -> f64 { v }
+        fn test_bool(v: bool) -> bool { v }
+    
+        // Implementations for all option<scalar> types
+        fn test_option_u8(v: Option<u8>) -> Option<u8> { v }
+        fn test_option_s8(v: Option<i8>) -> Option<i8> { v }
+        fn test_option_u16(v: Option<u16>) -> Option<u16> { v }
+        fn test_option_s16(v: Option<i16>) -> Option<i16> { v }
+        fn test_option_u32(v: Option<u32>) -> Option<u32> { v }
+        fn test_option_s32(v: Option<i32>) -> Option<i32> { v }
+        fn test_option_u64(v: Option<u64>) -> Option<u64> { v }
+        fn test_option_s64(v: Option<i64>) -> Option<i64> { v }
+        fn test_option_float32(v: Option<f32>) -> Option<f32> { v }
+        fn test_option_float64(v: Option<f64>) -> Option<f64> { v }
+        fn test_option_bool(v: Option<bool>) -> Option<bool> { v }
+
+         // Implementations for all result<scalar> types
+         fn test_result_u8(v: Result<u8,()>) -> Result<u8,()> { v }
+         fn test_result_s8(v: Result<i8,()>) -> Result<i8,()> { v }
+         fn test_result_u16(v: Result<u16,()>) -> Result<u16,()> { v }
+         fn test_result_s16(v: Result<i16,()>) -> Result<i16,()> { v }
+         fn test_result_u32(v: Result<u32,()>) -> Result<u32,()> { v }
+         fn test_result_s32(v: Result<i32,()>) -> Result<i32,()> { v }
+         fn test_result_u64(v: Result<u64,()>) -> Result<u64,()> { v }
+         fn test_result_s64(v: Result<i64,()>) -> Result<i64,()> { v }
+         fn test_result_float32(v: Result<f32,()>) -> Result<f32,()> { v }
+         fn test_result_float64(v: Result<f64,()>) -> Result<f64,()> { v }
+         fn test_result_bool(v: Result<bool,()>) -> Result<bool,()> { v }
+
+          // --- Implementation of the host verification function ---
+    fn verify_host_scalars() {
+        // Plain scalars
+        assert_eq!(host_test_u8(u8::MAX), u8::MAX);
+        assert_eq!(host_test_s8(i8::MIN), i8::MIN);
+        assert_eq!(host_test_u16(u16::MAX), u16::MAX);
+        assert_eq!(host_test_s16(i16::MIN), i16::MIN);
+        assert_eq!(host_test_u32(u32::MAX), u32::MAX);
+        assert_eq!(host_test_s32(i32::MIN), i32::MIN);
+        assert_eq!(host_test_u64(u64::MAX), u64::MAX);
+        assert_eq!(host_test_s64(i64::MIN), i64::MIN);
+        assert_eq!(host_test_float32(123.456), 123.456);
+        assert_eq!(host_test_float64(-987.654), -987.654);
+        assert_eq!(host_test_bool(true), true);
+
+        // --- Comprehensive Option<T> tests ---
+        // u8
+        assert_eq!(host_test_option_u8(Some(u8::MAX)), Some(u8::MAX));
+        assert_eq!(host_test_option_u8(None), None);
+        // s8
+        assert_eq!(host_test_option_s8(Some(i8::MIN)), Some(i8::MIN));
+        assert_eq!(host_test_option_s8(None), None);
+        // u16
+        assert_eq!(host_test_option_u16(Some(u16::MAX)), Some(u16::MAX));
+        assert_eq!(host_test_option_u16(None), None);
+        // s16
+        assert_eq!(host_test_option_s16(Some(i16::MIN)), Some(i16::MIN));
+        assert_eq!(host_test_option_s16(None), None);
+        // u32
+        assert_eq!(host_test_option_u32(Some(u32::MAX)), Some(u32::MAX));
+        assert_eq!(host_test_option_u32(None), None);
+        // s32
+        assert_eq!(host_test_option_s32(Some(i32::MIN)), Some(i32::MIN));
+        assert_eq!(host_test_option_s32(None), None);
+        // u64
+        assert_eq!(host_test_option_u64(Some(u64::MAX)), Some(u64::MAX));
+        assert_eq!(host_test_option_u64(None), None);
+        // s64
+        assert_eq!(host_test_option_s64(Some(i64::MIN)), Some(i64::MIN));
+        assert_eq!(host_test_option_s64(None), None);
+        // float32
+        assert_eq!(host_test_option_float32(Some(123.456)), Some(123.456));
+        assert_eq!(host_test_option_float32(None), None);
+        // float64
+        assert_eq!(host_test_option_float64(Some(-987.654)), Some(-987.654));
+        assert_eq!(host_test_option_float64(None), None);
+        // bool
+        assert_eq!(host_test_option_bool(Some(true)), Some(true));
+        assert_eq!(host_test_option_bool(None), None);
+    }
 }
 
 // Export the implementation.

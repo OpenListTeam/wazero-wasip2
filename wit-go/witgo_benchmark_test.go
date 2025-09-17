@@ -28,7 +28,9 @@ func setupBenchmark(b *testing.B) (context.Context, *Host, api.Module) {
 	wasi_snapshot_preview1.MustInstantiate(ctx, r)
 
 	// We don't need the host logger for benchmarks, so we provide a no-op implementation.
-	_, err := NewExporter(r.NewHostModuleBuilder("$root")).
+	exporter := NewExporter(r.NewHostModuleBuilder("$root"))
+	ExporterTestHostFunc(exporter)
+	_, err := exporter.
 		MustExport("host-log", func(msg string) {}).
 		MustExport("process-host-request", func(req HostRequest) string { return "" }).Instantiate(ctx)
 	require.NoError(b, err)

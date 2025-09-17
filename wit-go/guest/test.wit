@@ -69,4 +69,71 @@ world test-world {
     
     // --- NEW: Export a function that calls the complex import ---
     export call-complex-host-func: func(req: host-request) -> string;
+
+    // Functions to test all scalar types and their options.
+    export test-u8: func(v: u8) -> u8;
+    export test-s8: func(v: s8) -> s8;
+    export test-u16: func(v: u16) -> u16;
+    export test-s16: func(v: s16) -> s16;
+    export test-u32: func(v: u32) -> u32;
+    export test-s32: func(v: s32) -> s32;
+    export test-u64: func(v: u64) -> u64;
+    export test-s64: func(v: s64) -> s64;
+    export test-float32: func(v: f32) -> f32;
+    export test-float64: func(v: f64) -> f64;
+    export test-bool: func(v: bool) -> bool;
+
+    export test-option-u8: func(v: option<u8>) -> option<u8>;
+    export test-option-s8: func(v: option<s8>) -> option<s8>;
+    export test-option-u16: func(v: option<u16>) -> option<u16>;
+    export test-option-s16: func(v: option<s16>) -> option<s16>;
+    export test-option-u32: func(v: option<u32>) -> option<u32>;
+    export test-option-s32: func(v: option<s32>) -> option<s32>;
+    export test-option-u64: func(v: option<u64>) -> option<u64>;
+    export test-option-s64: func(v: option<s64>) -> option<s64>;
+    export test-option-float32: func(v: option<f32>) -> option<f32>;
+    export test-option-float64: func(v: option<f64>) -> option<f64>;
+    export test-option-bool: func(v: option<bool>) -> option<bool>;
+
+    export test-result-u8: func(v: result<u8>) -> result<u8>;
+    export test-result-s8: func(v: result<s8>) -> result<s8>;
+    export test-result-u16: func(v: result<u16>) -> result<u16>;
+    export test-result-s16: func(v: result<s16>) -> result<s16>;
+    export test-result-u32: func(v: result<u32>) -> result<u32>;
+    export test-result-s32: func(v: result<s32>) -> result<s32>;
+    export test-result-u64: func(v: result<u64>) -> result<u64>;
+    export test-result-s64: func(v: result<s64>) -> result<s64>;
+    export test-result-float32: func(v: result<f32>) -> result<f32>;
+    export test-result-float64: func(v: result<f64>) -> result<f64>;
+    export test-result-bool: func(v: result<bool>) -> result<bool>;
+
+
+    // New function for the Go test to trigger host function verification.
+    export verify-host-scalars: func();
+
+    // --- GUEST IMPORTS (provided by Go) ---
+    import host-test-u8: func(v: u8) -> u8;
+    import host-test-s8: func(v: s8) -> s8;
+    import host-test-u16: func(v: u16) -> u16;
+    import host-test-s16: func(v: s16) -> s16;
+    import host-test-u32: func(v: u32) -> u32;
+    import host-test-s32: func(v: s32) -> s32;
+    import host-test-u64: func(v: u64) -> u64;
+    import host-test-s64: func(v: s64) -> s64;
+    import host-test-float32: func(v: f32) -> f32;
+    import host-test-float64: func(v: f64) -> f64;
+    import host-test-bool: func(v: bool) -> bool;
+
+    // Expanded Option imports for all scalar types
+    import host-test-option-u8: func(v: option<u8>) -> option<u8>;
+    import host-test-option-s8: func(v: option<s8>) -> option<s8>;
+    import host-test-option-u16: func(v: option<u16>) -> option<u16>;
+    import host-test-option-s16: func(v: option<s16>) -> option<s16>;
+    import host-test-option-u32: func(v: option<u32>) -> option<u32>;
+    import host-test-option-s32: func(v: option<s32>) -> option<s32>;
+    import host-test-option-u64: func(v: option<u64>) -> option<u64>;
+    import host-test-option-s64: func(v: option<s64>) -> option<s64>;
+    import host-test-option-float32: func(v: option<f32>) -> option<f32>;
+    import host-test-option-float64: func(v: option<f64>) -> option<f64>;
+    import host-test-option-bool: func(v: option<bool>) -> option<bool>;
 }

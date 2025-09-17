@@ -1,0 +1,11 @@
+package local:test@0.1.0;
+
+world test-world {
+    import wasi:io/streams@0.2.7;
+    use wasi:io/streams@0.2.7.{input-stream, output-stream};
+
+    // 定义一个函数，它接收一个输入流，
+    // 使用 poll 等待它就绪，然后读取最多 4096 字节，
+    // 最后将读取到的内容作为字符串返回。
+    export test-read-stream: func(s: input-stream) -> string;
+}

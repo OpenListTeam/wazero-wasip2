@@ -96,19 +96,49 @@ func write(ctx context.Context, mem api.Memory, alloc *GuestAllocator, val refle
 	}
 
 	switch val.Kind() {
-	case reflect.Uint8, reflect.Int8:
-		if !mem.WriteByte(ptr, byte(val.Uint())) {
-			return fmt.Errorf("memory write failed for byte at ptr %d", ptr)
-		}
-		return nil
 	case reflect.Bool:
 		if !mem.WriteByte(ptr, boolToByte(val.Bool())) {
 			return fmt.Errorf("memory write failed for bool at ptr %d", ptr)
 		}
 		return nil
-	case reflect.Uint32, reflect.Int32:
+	case reflect.Int8:
+		if !mem.WriteByte(ptr, byte(val.Int())) {
+			return fmt.Errorf("memory write failed for byte at ptr %d", ptr)
+		}
+		return nil
+	case reflect.Uint8:
+		if !mem.WriteByte(ptr, byte(val.Uint())) {
+			return fmt.Errorf("memory write failed for byte at ptr %d", ptr)
+		}
+		return nil
+	case reflect.Int16:
+		if !mem.WriteUint16Le(ptr, uint16(val.Int())) {
+			return fmt.Errorf("memory write failed for int16 at ptr %d", ptr)
+		}
+		return nil
+	case reflect.Uint16:
+		if !mem.WriteUint16Le(ptr, uint16(val.Uint())) {
+			return fmt.Errorf("memory write failed for uint16 at ptr %d", ptr)
+		}
+		return nil
+	case reflect.Int32:
+		if !mem.WriteUint32Le(ptr, uint32(val.Int())) {
+			return fmt.Errorf("memory write failed for int32 at ptr %d", ptr)
+		}
+		return nil
+	case reflect.Uint32:
 		if !mem.WriteUint32Le(ptr, uint32(val.Uint())) {
 			return fmt.Errorf("memory write failed for uint32 at ptr %d", ptr)
+		}
+		return nil
+	case reflect.Int64:
+		if !mem.WriteUint64Le(ptr, uint64(val.Int())) {
+			return fmt.Errorf("memory write failed for int64 at ptr %d", ptr)
+		}
+		return nil
+	case reflect.Uint64:
+		if !mem.WriteUint64Le(ptr, uint64(val.Uint())) {
+			return fmt.Errorf("memory write failed for uint64 at ptr %d", ptr)
 		}
 		return nil
 	case reflect.Float32:
