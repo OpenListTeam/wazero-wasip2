@@ -45,3 +45,16 @@ func (m *ResourceManager[T]) Remove(handle uint32) {
 	defer m.mu.Unlock()
 	delete(m.handles, handle)
 }
+
+// Range iterates over the resources in the manager.
+// It calls the given function for each handle and resource. If the function
+// returns false, the iteration stops.
+func (m *ResourceManager[T]) Range(f func(handle uint32, resource T) bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for handle, resource := range m.handles {
+		if !f(handle, resource) {
+			break
+		}
+	}
+}

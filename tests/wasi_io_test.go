@@ -6,11 +6,11 @@ import (
 	"os"
 	"testing"
 	"time"
-	"wazero-wasip2/internal/streams"
 	"wazero-wasip2/wasip2"
-	wasi_error "wazero-wasip2/wasip2/error"
-	wasi_poll "wazero-wasip2/wasip2/poll"
-	wasi_stream "wazero-wasip2/wasip2/stream"
+
+	manager_io "wazero-wasip2/internal/io"
+	wasi_io "wazero-wasip2/wasip2/io"
+
 	witgo "wazero-wasip2/wit-go"
 
 	"github.com/stretchr/testify/require"
@@ -32,9 +32,7 @@ func TestWasiIO(t *testing.T) {
 
 	// 创建我们的 wasip2.Host 实例，并启用所有需要的模块。
 	h := wasip2.NewHost(
-		wasi_error.Module("0.2.0"),
-		wasi_poll.Module("0.2.0"),
-		wasi_stream.Module("0.2.0"),
+		wasi_io.Module("0.2.0"),
 	)
 	// 将我们的 Host 实现实例化到 wazero 运行时中。
 	err = h.Instantiate(ctx, r)
@@ -54,7 +52,7 @@ func TestWasiIO(t *testing.T) {
 
 		// 2. 将 PipeReader 封装成我们的 Stream 对象。
 		//    我们将 PipeReader 作为 Reader 和 Closer。
-		stream := &streams.Stream{Reader: pr, Closer: pr}
+		stream := &manager_io.Stream{Reader: pr, Closer: pr}
 
 		// 3. 将 Stream 对象添加到 StreamManager 中，获得一个句柄。
 		//    这个句柄将作为参数传递给 Guest。

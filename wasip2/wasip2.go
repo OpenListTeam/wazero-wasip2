@@ -2,10 +2,9 @@ package wasip2
 
 import (
 	"context"
-	"wazero-wasip2/internal/errors"
-	"wazero-wasip2/internal/http"
-	"wazero-wasip2/internal/poll"
-	"wazero-wasip2/internal/streams"
+	"wazero-wasip2/internal/filesystem"
+	"wazero-wasip2/internal/io"
+	"wazero-wasip2/internal/sockets"
 
 	"github.com/tetratelabs/wazero"
 )
@@ -22,10 +21,20 @@ type Implementation interface {
 
 // Host 是所有 WASI 实现的容器。
 type Host struct {
-	streamManager *streams.Manager
-	errorManager  *errors.ResourceManager
-	pollManager   *poll.Manager
-	httpManager   *http.HTTPManager
+	streamManager *io.StreamManager
+	errorManager  *io.ErrorManager
+	pollManager   *io.PollManager
+	// httpManager                 *http.HTTPManager
+
+	// filesystem 管理器
+	filesystemManager           *filesystem.Manager
+	directoryEntryStreamManager *filesystem.DirectoryEntryStreamManager
+
+	//  Sockets 管理器
+	networkManager              *sockets.NetworkManager
+	tcpSocketManager            *sockets.TCPSocketManager
+	udpSocketManager            *sockets.UDPSocketManager
+	resolveAddressStreamManager *sockets.ResolveAddressStreamManager
 	// 未来可以在这里添加 httpManager 等其他状态管理器
 
 	implementations []Implementation
@@ -36,13 +45,20 @@ type ModuleOption func(*Host)
 
 // NewHost 创建一个新的 Host 实例，并应用所有提供的模块选项。
 func NewHost(opts ...ModuleOption) *Host {
-	streamManager := streams.NewManager()
-	pollManager := poll.NewManager()
+	streamManager, pollManager, errorManager := io.NewManager()
 	h := &Host{
 		streamManager: streamManager,
-		errorManager:  errors.NewManager(),
+		errorManager:  errorManager,
 		pollManager:   pollManager,
-		httpManager:   http.NewHTTPManager(streamManager, pollManager),
+		// httpManager:                 http.NewHTTPManager(streamManager, pollManager),
+
+		filesystemManager:           filesystem.NewManager(),
+		directoryEntryStreamManager: filesystem.NewDirectoryEntryStreamManager(),
+
+		networkManager:              sockets.NewNetworkManager(),
+		tcpSocketManager:            sockets.NewTCPSocketManager(),
+		udpSocketManager:            sockets.NewUDPSocketManager(),
+		resolveAddressStreamManager: sockets.NewResolveAddressStreamManager(),
 	}
 
 	for _, opt := range opts {
@@ -74,18 +90,41 @@ func (h *Host) Instantiate(ctx context.Context, r wazero.Runtime) error {
 	return nil
 }
 
-func (h *Host) StreamManager() *streams.Manager {
+func (h *Host) StreamManager() *io.StreamManager {
 	return h.streamManager
 }
 
-func (h *Host) ErrorManager() *errors.ResourceManager {
+func (h *Host) ErrorManager() *io.ErrorManager {
 	return h.errorManager
 }
 
-func (h *Host) PollManager() *poll.Manager {
+func (h *Host) PollManager() *io.PollManager {
 	return h.pollManager
 }
 
-func (h *Host) HTTPManager() *http.HTTPManager {
-	return h.httpManager
+// func (h *Host) HTTPManager() *http.HTTPManager {
+// 	return h.httpManager
+// }
+
+// FilesystemManager 返回文件系统管理器。
+func (h *Host) FilesystemManager() *filesystem.Manager {
+	return h.filesystemManager
+}
+
+// DirectoryEntryStreamManager 返回目录条目流管理器。
+func (h *Host) DirectoryEntryStreamManager() *filesystem.DirectoryEntryStreamManager {
+	return h.directoryEntryStreamManager
+}
+
+func (h *Host) NetworkManager() *sockets.NetworkManager {
+	return h.networkManager
+}
+func (h *Host) TCPSocketManager() *sockets.TCPSocketManager {
+	return h.tcpSocketManager
+}
+func (h *Host) UDPSocketManager() *sockets.UDPSocketManager {
+	return h.udpSocketManager
+}
+func (h *Host) ResolveAddressStreamManager() *sockets.ResolveAddressStreamManager {
+	return h.resolveAddressStreamManager
 }

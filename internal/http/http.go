@@ -6,8 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"wazero-wasip2/internal/poll"
-	"wazero-wasip2/internal/streams"
+	manager_io "wazero-wasip2/internal/io"
 	witgo "wazero-wasip2/wit-go"
 )
 
@@ -126,8 +125,8 @@ func NewFieldsManager() *FieldsManager {
 // HTTPManager 是所有 HTTP 相关资源的总管理器。
 type HTTPManager struct {
 	Fields            *FieldsManager
-	Streams           *streams.Manager
-	Poll              *poll.Manager
+	Streams           *manager_io.StreamManager
+	Poll              *manager_io.PollManager
 	IncomingRequests  *witgo.ResourceManager[*IncomingRequest]
 	OutgoingRequests  *witgo.ResourceManager[*OutgoingRequest]
 	Responses         *witgo.ResourceManager[*IncomingResponse]
@@ -140,7 +139,7 @@ type HTTPManager struct {
 	Options           *witgo.ResourceManager[*RequestOptions]
 }
 
-func NewHTTPManager(sm *streams.Manager, poll *poll.Manager) *HTTPManager {
+func NewHTTPManager(sm *manager_io.StreamManager, poll *manager_io.PollManager) *HTTPManager {
 	return &HTTPManager{
 		Fields:            NewFieldsManager(),
 		Streams:           sm,

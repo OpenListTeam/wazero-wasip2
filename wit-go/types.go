@@ -53,6 +53,12 @@ type Tuple[T0, T1 any] struct {
 	F1 T1
 }
 
+type Tuple3[T0, T1, T2 any] struct {
+	F0 T0
+	F1 T1
+	F2 T2
+}
+
 func String(s string) *string {
 	return &s
 }
