@@ -19,12 +19,20 @@ func newStreamsImpl(sm *manager_io.StreamManager, em *manager_io.ErrorManager, p
 }
 
 // subscribeToStream 是 SubscribeToInputStream 和 SubscribeToOutputStream 的通用实现。
-func (i *streamsImpl) subscribeToStream(this uint32) Pollable {
+func (i *streamsImpl) subscribeToStream(this uint32, direction manager_io.PollDirection) Pollable {
 	s, ok := i.sm.Get(this)
 	if !ok {
 		// 无效的 stream 句柄，返回一个立即就绪的 pollable，以便上层能尽快发现错误。
 		p := manager_io.NewPollable(nil)
 		close(p.ReadyChan)
+		return i.pm.Add(p)
+	}
+
+	// 如果流有关联的 Fd，我们创建一个携带 Fd 和方向的 Pollable
+	if s.Fd != 0 {
+		p := manager_io.NewPollable(nil)
+		p.Fd = s.Fd
+		p.Direction = direction
 		return i.pm.Add(p)
 	}
 
@@ -115,7 +123,7 @@ func (i *streamsImpl) BlockingSkip(ctx context.Context, this InputStream, maxLen
 }
 
 func (i *streamsImpl) SubscribeToInputStream(_ context.Context, this InputStream) Pollable {
-	return i.subscribeToStream(this)
+	return i.subscribeToStream(this, manager_io.PollDirectionRead)
 }
 
 func (i *streamsImpl) CheckWrite(_ context.Context, this OutputStream) witgo.Result[uint64, StreamError] {
@@ -168,7 +176,7 @@ func (i *streamsImpl) BlockingFlush(ctx context.Context, this OutputStream) witg
 }
 
 func (i *streamsImpl) SubscribeToOutputStream(_ context.Context, this OutputStream) Pollable {
-	return i.subscribeToStream(this)
+	return i.subscribeToStream(this, manager_io.PollDirectionWrite)
 }
 
 func (i *streamsImpl) WriteZeroes(ctx context.Context, this OutputStream, len uint64) witgo.Result[witgo.Unit, StreamError] {

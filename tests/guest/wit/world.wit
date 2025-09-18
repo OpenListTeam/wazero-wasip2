@@ -8,4 +8,12 @@ world test-world {
     // 使用 poll 等待它就绪，然后读取最多 4096 字节，
     // 最后将读取到的内容作为字符串返回。
     export test-read-stream: func(s: input-stream) -> string;
+
+    // 新增：导出 TCP 测试函数
+    // 它将连接到指定的端口，发送一条消息，并返回服务器的响应
+    export test-tcp-sockets: func(port: u16, message: string) -> string;
+
+    // 新增：导出 UDP 测试函数
+    // 它将向指定端口发送一条数据报，并等待接收一条响应数据报
+    export test-udp-sockets: func(port: u16, message: string) -> string;
 }

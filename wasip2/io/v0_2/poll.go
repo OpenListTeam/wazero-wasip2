@@ -43,33 +43,60 @@ func (i *pollImpl) Block(_ context.Context, this Pollable) {
 
 func (i *pollImpl) Poll(_ context.Context, handles []Pollable) []uint32 {
 	if len(handles) == 0 {
-		panic("poll input list cannot be empty")
+		return []uint32{}
 	}
 
-	// 1. 快速非阻塞检查
 	var readyIndexes []uint32
+	var pollFds []pollFd
+
 	for j, handle := range handles {
-		if i.Ready(context.Background(), handle) {
+		if p, ok := i.pm.Get(handle); ok && p.IsReady() {
 			readyIndexes = append(readyIndexes, uint32(j))
+		} else if s, ok := i.pm.Get(handle); ok && s.Fd != 0 {
+			// 如果是基于 Fd 的流，则添加到轮询列表
+			pfd := pollFd{Fd: int32(s.Fd)}
+			if s.Direction == io.PollDirectionRead {
+				pfd.Events = pollEventRead
+			} else {
+				pfd.Events = pollEventWrite
+			}
+			pollFds = append(pollFds, pfd)
 		}
 	}
+
 	if len(readyIndexes) > 0 {
 		return readyIndexes
 	}
 
-	// 2. 构造 select cases 并阻塞
-	cases := make([]reflect.SelectCase, len(handles))
-	for j, handle := range handles {
-		ch := make(chan struct{}) // 默认创建一个永不就绪的 channel
-		if p, ok := i.pm.Get(handle); ok {
-			ch = p.Channel()
+	if len(pollFds) == 0 {
+		// 没有可轮询的 Fd，阻塞直到其中一个 pollable 就绪
+		// (例如，定时器)
+		cases := make([]reflect.SelectCase, len(handles))
+		for j, handle := range handles {
+			ch := make(chan struct{})
+			if p, ok := i.pm.Get(handle); ok {
+				ch = p.Channel()
+			}
+			cases[j] = reflect.SelectCase{
+				Dir:  reflect.SelectRecv,
+				Chan: reflect.ValueOf(ch),
+			}
 		}
-		cases[j] = reflect.SelectCase{
-			Dir:  reflect.SelectRecv,
-			Chan: reflect.ValueOf(ch),
+		chosen, _, _ := reflect.Select(cases)
+		return []uint32{uint32(chosen)}
+	}
+
+	// 执行平台特定的轮询
+	n, err := poll(pollFds, 100) // 100ms timeout
+	if n == 0 || err != nil {
+		return []uint32{}
+	}
+
+	for j, pfd := range pollFds {
+		if (pfd.Revents&pfd.Events) != 0 || (pfd.Revents&pollEventError) != 0 {
+			readyIndexes = append(readyIndexes, uint32(j))
 		}
 	}
 
-	chosen, _, _ := reflect.Select(cases)
-	return []uint32{uint32(chosen)}
+	return readyIndexes
 }

@@ -24,7 +24,6 @@ func newTypesImpl(h *wasip2.Host) *typesImpl {
 
 /// TODO:
 /// 1. 完善沙盒机制
-/// 2. 完善atime读取
 
 // --- descriptor resource methods ---
 
@@ -41,7 +40,7 @@ func (i *typesImpl) ReadViaStream(_ context.Context, this Descriptor, offset Fil
 		return witgo.Err[InputStream, ErrorCode](ErrorCodeBadDescriptor)
 	}
 	reader := io.NewSectionReader(d.File, int64(offset), -1)
-	stream := &manager_io.Stream{Reader: reader, Closer: io.NopCloser(reader)}
+	stream := &manager_io.Stream{Reader: reader, Fd: int(d.File.Fd())}
 	handle := i.host.StreamManager().Add(stream)
 	return witgo.Ok[InputStream, ErrorCode](handle)
 }
@@ -52,7 +51,7 @@ func (i *typesImpl) WriteViaStream(_ context.Context, this Descriptor, offset Fi
 		return witgo.Err[OutputStream, ErrorCode](ErrorCodeBadDescriptor)
 	}
 	writer := &sectionWriter{d.File, int64(offset)}
-	stream := &manager_io.Stream{Writer: writer}
+	stream := &manager_io.Stream{Writer: writer, Fd: int(d.File.Fd())}
 	handle := i.host.StreamManager().Add(stream)
 	return witgo.Ok[OutputStream, ErrorCode](handle)
 }
@@ -62,7 +61,7 @@ func (i *typesImpl) AppendViaStream(_ context.Context, this Descriptor) witgo.Re
 	if !ok {
 		return witgo.Err[OutputStream, ErrorCode](ErrorCodeBadDescriptor)
 	}
-	stream := &manager_io.Stream{Writer: d.File}
+	stream := &manager_io.Stream{Writer: d.File, Fd: int(d.File.Fd())}
 	handle := i.host.StreamManager().Add(stream)
 	return witgo.Ok[OutputStream, ErrorCode](handle)
 }
@@ -111,9 +110,12 @@ func (i *typesImpl) SetTimes(ctx context.Context, this Descriptor, data_access_t
 		if err != nil {
 			return witgo.Err[witgo.Unit, ErrorCode](mapOsError(err))
 		}
-		// TODO: 这在 Go 标准库中不直接支持，通常需要 syscall。为了简化，我们暂时使用 ModTime 作为 atime 的备用。
+
 		atime = info.ModTime()
 		mtime = info.ModTime()
+		if time, err := GetATime(info); err == nil {
+			atime = time
+		}
 	}
 
 	if data_access_timestamp.Timestamp != nil {

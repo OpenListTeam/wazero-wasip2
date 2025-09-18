@@ -15,7 +15,6 @@ import (
 
 func (i *typesImpl) GetFlags(ctx context.Context, this Descriptor) witgo.Result[DescriptorFlags, ErrorCode] {
 	// 在类Unix系统上，可以使用 fcntl 获取 flags。
-	// 这需要平台特定的实现。
 	d, ok := i.host.FilesystemManager().Get(this)
 	if !ok {
 		return witgo.Err[DescriptorFlags, ErrorCode](ErrorCodeBadDescriptor)
@@ -36,7 +35,14 @@ func (i *typesImpl) GetFlags(ctx context.Context, this Descriptor) witgo.Result[
 	} else { // O_RDONLY
 		wasiFlags.Read = true
 	}
-	// 其他 flags (O_SYNC, O_DSYNC) 的映射可以后续添加
+
+	if flags&unix.O_DSYNC != 0 {
+		wasiFlags.DataIntegritySync = true
+	}
+	if flags&unix.O_SYNC != 0 {
+		wasiFlags.FileIntegritySync = true
+		wasiFlags.RequestedWriteSync = true
+	}
 
 	return witgo.Ok[DescriptorFlags, ErrorCode](wasiFlags)
 }
@@ -89,63 +95,63 @@ func mapOsError(err error) ErrorCode {
 	var errno syscall.Errno
 	if errors.As(err, &errno) {
 		switch errno {
-		case syscall.EACCES:
+		case unix.EACCES:
 			return ErrorCodeAccess
-		case syscall.EAGAIN:
+		case unix.EAGAIN:
 			return ErrorCodeWouldBlock
-		case syscall.EBADF:
+		case unix.EBADF:
 			return ErrorCodeBadDescriptor
-		case syscall.EBUSY:
+		case unix.EBUSY:
 			return ErrorCodeBusy
-		case syscall.EEXIST:
+		case unix.EEXIST:
 			return ErrorCodeExist
-		case syscall.EFBIG:
+		case unix.EFBIG:
 			return ErrorCodeFileTooLarge
-		case syscall.EINTR:
+		case unix.EINTR:
 			return ErrorCodeInterrupted
-		case syscall.EINVAL:
+		case unix.EINVAL:
 			return ErrorCodeInvalid
-		case syscall.EIO:
+		case unix.EIO:
 			return ErrorCodeIo
-		case syscall.EISDIR:
+		case unix.EISDIR:
 			return ErrorCodeIsDirectory
-		case syscall.ELOOP:
+		case unix.ELOOP:
 			return ErrorCodeLoop
-		case syscall.EMLINK:
+		case unix.EMLINK:
 			return ErrorCodeTooManyLinks
-		case syscall.ENAMETOOLONG:
+		case unix.ENAMETOOLONG:
 			return ErrorCodeNameTooLong
-		case syscall.ENODEV:
+		case unix.ENODEV:
 			return ErrorCodeNoDevice
-		case syscall.ENOENT:
+		case unix.ENOENT:
 			return ErrorCodeNoEntry
-		case syscall.ENOLCK:
+		case unix.ENOLCK:
 			return ErrorCodeNoLock
-		case syscall.ENOMEM:
+		case unix.ENOMEM:
 			return ErrorCodeInsufficientMemory
-		case syscall.ENOSPC:
+		case unix.ENOSPC:
 			return ErrorCodeInsufficientSpace
-		case syscall.ENOTDIR:
+		case unix.ENOTDIR:
 			return ErrorCodeNotDirectory
-		case syscall.ENOTEMPTY:
+		case unix.ENOTEMPTY:
 			return ErrorCodeNotEmpty
-		case syscall.ENOTSUP:
+		case unix.ENOTSUP:
 			return ErrorCodeUnsupported
-		case syscall.ENXIO:
+		case unix.ENXIO:
 			return ErrorCodeNoSuchDevice
-		case syscall.EOVERFLOW:
+		case unix.EOVERFLOW:
 			return ErrorCodeOverflow
-		case syscall.EPERM:
+		case unix.EPERM:
 			return ErrorCodeNotPermitted
-		case syscall.EPIPE:
+		case unix.EPIPE:
 			return ErrorCodePipe
-		case syscall.EROFS:
+		case unix.EROFS:
 			return ErrorCodeReadOnly
-		case syscall.ESPIPE:
+		case unix.ESPIPE:
 			return ErrorCodeInvalidSeek
-		case syscall.ETXTBSY:
+		case unix.ETXTBSY:
 			return ErrorCodeTextFileBusy
-		case syscall.EXDEV:
+		case unix.EXDEV:
 			return ErrorCodeCrossDevice
 		}
 	}

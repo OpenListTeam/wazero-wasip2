@@ -4,6 +4,11 @@ wit_bindgen::generate!({
     generate_all,
 });
 
+use wasi_dep::sockets::udp::Network;
+use wasi_dep::sockets::udp::OutgoingDatagram;
+
+use wasi_dep::sockets::{instance_network, network::{IpSocketAddress,IpAddress,Ipv4Address,Ipv4SocketAddress,IpAddressFamily}, tcp,udp_create_socket, tcp_create_socket, udp};
+
 use crate::wasi::io::poll;
 use crate::wasi::io::streams;
 use std::cell::RefCell;
@@ -37,6 +42,84 @@ impl Guest for MyGuest {
 
         // 4. 将读取到的字节转换为字符串并返回
         String::from_utf8(data).expect("invalid utf-8")
+    }
+
+    // 实现新的 TCP 测试函数
+    fn test_tcp_sockets(port: u16, message: String) -> String {
+        let network = instance_network::instance_network();
+        let family = IpAddressFamily::Ipv4;
+
+        // 1. 创建 TCP 套接字
+        let socket =
+            tcp_create_socket::create_tcp_socket(family).expect("failed to create tcp socket");
+
+        // 2. 构造服务器地址
+        let remote_address = IpSocketAddress::Ipv4(
+            Ipv4SocketAddress {
+                port,
+                address: (127, 0, 0, 1),
+            },
+        );
+
+        // 3. 连接到服务器
+        socket.start_connect(&network, remote_address).expect("failed to start connect");
+
+        // 4. 轮询直到连接完成
+        socket.subscribe().block();
+        let (input, output) = socket.finish_connect().expect("failed to finish connect");
+
+        // 5. 发送消息
+        output.write(message.as_bytes()).expect("failed to write message");
+
+        // 6. 读取响应
+        let response = input.blocking_read(1024).expect("failed to read response");
+
+        String::from_utf8(response).unwrap()
+    }
+
+    // 实现新的 UDP 测试函数
+    fn test_udp_sockets(port: u16, message: String) -> String {
+        let network = instance_network::instance_network();
+        let family = IpAddressFamily::Ipv4;
+
+        // 1. 创建 UDP 套接字
+        let socket =
+            udp_create_socket::create_udp_socket(family).expect("failed to create udp socket");
+
+        // 2. 绑定到任意本地地址和端口
+        let local_addr = IpSocketAddress::Ipv4(
+           Ipv4SocketAddress {
+                port: 0, // 任意端口
+                address:  (0, 0, 0, 0),
+            },
+        );
+        socket.start_bind(&network, local_addr).expect("failed to start bind");
+        // socket.subscribe().block();
+        socket.finish_bind().expect("failed to finish bind");
+       
+        // 3. 构造服务器地址
+        let remote_address = IpSocketAddress::Ipv4(
+            Ipv4SocketAddress {
+                port,
+                address:  (127, 0, 0, 1),
+            },
+        );
+
+        // 4. 获取数据报流
+        let (incoming, outgoing) =  socket.stream(None).expect("failed to get udp streams");
+
+        // 5. 发送数据报
+        let datagram = udp::OutgoingDatagram {
+            data: message.as_bytes().to_vec(),
+            remote_address: Some(remote_address),
+        };
+        outgoing.send( &[datagram]).expect("failed to send datagram");
+
+        // 6. 等待并接收响应数据报
+        // incoming.subscribe().block();
+        let datagrams = incoming.receive(1).expect("failed to receive datagrams");
+     
+        String::from_utf8(datagrams[0].data.clone()).unwrap()
     }
 }
 

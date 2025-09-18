@@ -1,4 +1,4 @@
-//go:build !unix
+//go:build !unix && !windows
 
 package v0_2
 
@@ -6,6 +6,8 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"os"
+	"time"
 	witgo "wazero-wasip2/wit-go"
 )
 
@@ -72,4 +74,8 @@ func mapOsError(err error) ErrorCode {
 	}
 
 	return ErrorCodeUnsupported
+}
+
+func GetATime(info os.FileInfo) (time.Time, error) {
+	return time.Time{}, errors.New("GetATime not supported on this platform")
 }

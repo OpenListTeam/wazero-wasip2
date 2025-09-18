@@ -33,8 +33,8 @@ func toIPAddressFamily(family sockets.IPAddressFamily) (IPAddressFamily, error) 
 	}
 }
 
-// fromIPSocketAddress 将 WIT 的 IPSocketAddress 转换为 Go 的 net.Addr。
-func fromIPSocketAddress(addr IPSocketAddress) (net.Addr, error) {
+// fromIPSocketAddressToTCPAddr 将 WIT 的 IPSocketAddress 转换为 Go 的 *net.TCPAddr。
+func fromIPSocketAddressToTCPAddr(addr IPSocketAddress) (*net.TCPAddr, error) {
 	if addr.IPV4 != nil {
 		ip := net.IP(addr.IPV4.Address[:])
 		return &net.TCPAddr{IP: ip, Port: int(addr.IPV4.Port)}, nil
@@ -44,9 +44,43 @@ func fromIPSocketAddress(addr IPSocketAddress) (net.Addr, error) {
 		for i, part := range addr.IPV6.Address {
 			binary.BigEndian.PutUint16(ip[i*2:], part)
 		}
+		// ZoneId 的转换依赖于 net.LookupAddr 或其他更复杂的逻辑，此处简化。
 		return &net.TCPAddr{IP: ip, Port: int(addr.IPV6.Port), Zone: ""}, nil
 	}
 	return nil, errors.New("invalid ip-socket-address")
+}
+
+// fromIPSocketAddressToUDPAddr 将 WIT 的 IPSocketAddress 转换为 Go 的 *net.UDPAddr。
+func fromIPSocketAddressToUDPAddr(addr IPSocketAddress) (*net.UDPAddr, error) {
+	if addr.IPV4 != nil {
+		ip := net.IP(addr.IPV4.Address[:])
+		return &net.UDPAddr{IP: ip, Port: int(addr.IPV4.Port)}, nil
+	}
+	if addr.IPV6 != nil {
+		ip := make(net.IP, 16)
+		for i, part := range addr.IPV6.Address {
+			binary.BigEndian.PutUint16(ip[i*2:], part)
+		}
+		return &net.UDPAddr{IP: ip, Port: int(addr.IPV6.Port), Zone: ""}, nil
+	}
+	return nil, errors.New("invalid ip-socket-address")
+}
+
+// mapDnsError 将 Go 的 net.DNSError 映射到 wasi:sockets 的 ErrorCode。
+func mapDnsError(err error) ErrorCode {
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		if dnsErr.IsTemporary {
+			return ErrorCodeTemporaryResolverFailure
+		}
+		if dnsErr.IsNotFound {
+			return ErrorCodeNameUnresolvable
+		}
+		// 如果不是临时或未找到，则认为是永久性故障
+		return ErrorCodePermanentResolverFailure
+	}
+	// 对于其他类型的网络错误，返回一个通用的不可解析错误
+	return ErrorCodeNameUnresolvable
 }
 
 // mapOsError 将 Go 的 os/syscall 网络错误映射到 wasi:sockets 的 ErrorCode。
@@ -112,37 +146,61 @@ func mapOsError(err error) ErrorCode {
 
 // toIPSocketAddress 将 Go 的 net.Addr 转换为 WIT 的 IPSocketAddress。
 func toIPSocketAddress(addr net.Addr) (IPSocketAddress, error) {
-	tcpAddr, ok := addr.(*net.TCPAddr)
-	if !ok {
-		return IPSocketAddress{}, errors.New("address is not TCPAddr")
-	}
+	switch tcpAddr := addr.(type) {
+	case *net.TCPAddr:
 
-	if ipv4 := tcpAddr.IP.To4(); ipv4 != nil {
-		var wasiAddr IPv4Address
-		copy(wasiAddr[:], ipv4)
-		return IPSocketAddress{
-			IPV4: &IPv4SocketAddress{
-				Port:    uint16(tcpAddr.Port),
-				Address: wasiAddr,
-			},
-		}, nil
-	}
-
-	if ipv6 := tcpAddr.IP.To16(); ipv6 != nil {
-		var wasiAddr IPv6Address
-		for i := 0; i < 8; i++ {
-			wasiAddr[i] = binary.BigEndian.Uint16(ipv6[i*2:])
+		if ipv4 := tcpAddr.IP.To4(); ipv4 != nil {
+			var wasiAddr IPv4Address
+			copy(wasiAddr[:], ipv4)
+			return IPSocketAddress{
+				IPV4: &IPv4SocketAddress{
+					Port:    uint16(tcpAddr.Port),
+					Address: wasiAddr,
+				},
+			}, nil
 		}
-		return IPSocketAddress{
-			IPV6: &IPv6SocketAddress{
-				Port:    uint16(tcpAddr.Port),
-				Address: wasiAddr,
-				// FlowInfo and ScopeID require more complex logic to extract
-			},
-		}, nil
-	}
 
-	return IPSocketAddress{}, errors.New("unsupported IP address format")
+		if ipv6 := tcpAddr.IP.To16(); ipv6 != nil {
+			var wasiAddr IPv6Address
+			for i := 0; i < 8; i++ {
+				wasiAddr[i] = binary.BigEndian.Uint16(ipv6[i*2:])
+			}
+			return IPSocketAddress{
+				IPV6: &IPv6SocketAddress{
+					Port:    uint16(tcpAddr.Port),
+					Address: wasiAddr,
+					// FlowInfo and ScopeID require more complex logic to extract
+				},
+			}, nil
+		}
+	case *net.UDPAddr:
+		if ipv4 := tcpAddr.IP.To4(); ipv4 != nil {
+			var wasiAddr IPv4Address
+			copy(wasiAddr[:], ipv4)
+			return IPSocketAddress{
+				IPV4: &IPv4SocketAddress{
+					Port:    uint16(tcpAddr.Port),
+					Address: wasiAddr,
+				},
+			}, nil
+		}
+
+		if ipv6 := tcpAddr.IP.To16(); ipv6 != nil {
+			var wasiAddr IPv6Address
+			for i := 0; i < 8; i++ {
+				wasiAddr[i] = binary.BigEndian.Uint16(ipv6[i*2:])
+			}
+			return IPSocketAddress{
+				IPV6: &IPv6SocketAddress{
+					Port:    uint16(tcpAddr.Port),
+					Address: wasiAddr,
+					// FlowInfo and ScopeID require more complex logic to extract
+				},
+			}, nil
+		}
+	default:
+	}
+	return IPSocketAddress{}, errors.New("address is not TCPAddr")
 }
 
 func fromIPSocketAddressToSockaddr(addr IPSocketAddress) (syscall.Sockaddr, error) {

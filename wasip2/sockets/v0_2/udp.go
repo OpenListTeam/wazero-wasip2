@@ -20,54 +20,6 @@ func newUDPImpl(h *wasip2.Host) *udpImpl {
 	return &udpImpl{host: h}
 }
 
-func (i *udpImpl) DropUDPSocket(_ context.Context, handle UDPSocket) {
-	sock, ok := i.host.UDPSocketManager().Get(handle)
-	if !ok {
-		return
-	}
-	if sock.Conn != nil {
-		sock.Conn.Close()
-	} else if sock.Fd != 0 {
-		syscall.Close(sock.Fd)
-	}
-	i.host.UDPSocketManager().Remove(handle)
-}
-
-func (i *udpImpl) StartBind(_ context.Context, this UDPSocket, network Network, localAddress IPSocketAddress) witgo.Result[witgo.Unit, ErrorCode] {
-	sock, ok := i.host.UDPSocketManager().Get(this)
-	if !ok {
-		return witgo.Err[witgo.Unit, ErrorCode](ErrorCodeInvalidArgument)
-	}
-
-	// 将 WIT 地址转换为 syscall.Sockaddr
-	sockaddr, err := fromIPSocketAddressToSockaddr(localAddress)
-	if err != nil {
-		return witgo.Err[witgo.Unit, ErrorCode](ErrorCodeInvalidArgument)
-	}
-
-	// 执行 syscall.Bind
-	bindErr := syscall.Bind(sock.Fd, sockaddr)
-	if bindErr != nil {
-		return witgo.Err[witgo.Unit, ErrorCode](mapOsError(bindErr))
-	}
-
-	// 绑定成功后，将 Fd 转换为 net.UDPConn 以便后续操作
-	file := os.NewFile(uintptr(sock.Fd), "")
-	conn, connErr := net.FileConn(file)
-	file.Close() // FileConn 会复制 fd，所以可以关闭原始的
-	if connErr != nil {
-		return witgo.Err[witgo.Unit, ErrorCode](mapOsError(connErr))
-	}
-	sock.Conn = conn.(*net.UDPConn)
-
-	return witgo.Ok[witgo.Unit, ErrorCode](witgo.Unit{})
-}
-
-func (i *udpImpl) FinishBind(_ context.Context, this UDPSocket) witgo.Result[witgo.Unit, ErrorCode] {
-	// 我们的 start-bind 是同步的，所以这里直接成功返回
-	return witgo.Ok[witgo.Unit, ErrorCode](witgo.Unit{})
-}
-
 func (i *udpImpl) Stream(_ context.Context, this UDPSocket, remoteAddress witgo.Option[IPSocketAddress]) witgo.Result[witgo.Tuple[IncomingDatagramStream, OutgoingDatagramStream], ErrorCode] {
 	// stream 方法用于创建收发数据报的流。在我们的实现中，
 	// incoming 和 outgoing stream 将共享同一个 UDP socket 资源。
@@ -93,8 +45,15 @@ func (i *udpImpl) LocalAddress(ctx context.Context, this UDPSocket) witgo.Result
 }
 
 func (i *udpImpl) RemoteAddress(ctx context.Context, this UDPSocket) witgo.Result[IPSocketAddress, ErrorCode] {
-	// UDP `connect` 之后才有 remote address
-	return witgo.Err[IPSocketAddress, ErrorCode](ErrorCodeInvalidState)
+	sock, ok := i.host.UDPSocketManager().Get(this)
+	if !ok || sock.Conn == nil {
+		return witgo.Err[IPSocketAddress, ErrorCode](ErrorCodeInvalidState)
+	}
+	addr, err := toIPSocketAddress(sock.Conn.RemoteAddr())
+	if err != nil {
+		return witgo.Err[IPSocketAddress, ErrorCode](mapOsError(err))
+	}
+	return witgo.Ok[IPSocketAddress, ErrorCode](addr)
 }
 
 func (i *udpImpl) AddressFamily(ctx context.Context, this UDPSocket) IPAddressFamily {
@@ -106,33 +65,41 @@ func (i *udpImpl) AddressFamily(ctx context.Context, this UDPSocket) IPAddressFa
 	return family
 }
 
-// ... 其他 UDP socket option 方法的存根 ...
-func (i *udpImpl) UnicastHopLimit(ctx context.Context, this UDPSocket) witgo.Result[uint8, ErrorCode] {
-	return witgo.Err[uint8, ErrorCode](ErrorCodeNotSupported)
-}
-func (i *udpImpl) SetUnicastHopLimit(ctx context.Context, this UDPSocket, value uint8) witgo.Result[witgo.Unit, ErrorCode] {
-	return witgo.Err[witgo.Unit, ErrorCode](ErrorCodeNotSupported)
-}
-func (i *udpImpl) ReceiveBufferSize(ctx context.Context, this UDPSocket) witgo.Result[uint64, ErrorCode] {
-	return witgo.Err[uint64, ErrorCode](ErrorCodeNotSupported)
-}
-func (i *udpImpl) SetReceiveBufferSize(ctx context.Context, this UDPSocket, value uint64) witgo.Result[witgo.Unit, ErrorCode] {
-	return witgo.Err[witgo.Unit, ErrorCode](ErrorCodeNotSupported)
-}
-func (i *udpImpl) SendBufferSize(ctx context.Context, this UDPSocket) witgo.Result[uint64, ErrorCode] {
-	return witgo.Err[uint64, ErrorCode](ErrorCodeNotSupported)
-}
-func (i *udpImpl) SetSendBufferSize(ctx context.Context, this UDPSocket, value uint64) witgo.Result[witgo.Unit, ErrorCode] {
-	return witgo.Err[witgo.Unit, ErrorCode](ErrorCodeNotSupported)
-}
-func (i *udpImpl) Subscribe(ctx context.Context, this UDPSocket) wasip2_io.Pollable {
-	p := manager_io.NewPollable(nil)
-	p.SetReady()
-	return i.host.PollManager().Add(p)
+// SetReceiveBufferSize 设置接收缓冲区大小。
+func (i *udpImpl) SetReceiveBufferSize(ctx context.Context, this TCPSocket, value uint64) witgo.Result[witgo.Unit, ErrorCode] {
+	sock, ok := i.host.TCPSocketManager().Get(this)
+	if !ok {
+		return witgo.Err[witgo.Unit, ErrorCode](ErrorCodeInvalidArgument)
+	}
+	if sock.Conn == nil {
+		return witgo.Err[witgo.Unit, ErrorCode](ErrorCodeInvalidState)
+	}
+	err := sock.Conn.SetReadBuffer(int(value))
+	if err != nil {
+		return witgo.Err[witgo.Unit, ErrorCode](mapOsError(err))
+	}
+	return witgo.Ok[witgo.Unit, ErrorCode](witgo.Unit{})
 }
 
-// --- Datagram Stream Implementations ---
-// --- Datagram Stream Implementations ---
+// SetSendBufferSize 设置发送缓冲区大小。
+func (i *udpImpl) SetSendBufferSize(ctx context.Context, this TCPSocket, value uint64) witgo.Result[witgo.Unit, ErrorCode] {
+	sock, ok := i.host.TCPSocketManager().Get(this)
+	if !ok {
+		return witgo.Err[witgo.Unit, ErrorCode](ErrorCodeInvalidArgument)
+	}
+	if sock.Conn == nil {
+		return witgo.Err[witgo.Unit, ErrorCode](ErrorCodeInvalidState)
+	}
+	err := sock.Conn.SetWriteBuffer(int(value))
+	if err != nil {
+		return witgo.Err[witgo.Unit, ErrorCode](mapOsError(err))
+	}
+	return witgo.Ok[witgo.Unit, ErrorCode](witgo.Unit{})
+}
+
+func (i *udpImpl) Subscribe(ctx context.Context, this UDPSocket) wasip2_io.Pollable {
+	return i.subscribe(ctx, this, manager_io.PollDirectionWrite)
+}
 
 func (i *udpImpl) DropIncomingDatagramStream(_ context.Context, handle IncomingDatagramStream) {}
 func (i *udpImpl) DropOutgoingDatagramStream(_ context.Context, handle OutgoingDatagramStream) {}
@@ -193,7 +160,7 @@ func (i *udpImpl) Send(_ context.Context, this OutgoingDatagramStream, datagrams
 		var err error
 
 		if dg.RemoteAddress.Some != nil {
-			remoteAddr, err = fromIPSocketAddress(*dg.RemoteAddress.Some)
+			remoteAddr, err = fromIPSocketAddressToUDPAddr(*dg.RemoteAddress.Some)
 			if err != nil {
 				// 如果地址无效，并且我们已经发送了一些数据报，就此打住
 				if sentCount > 0 {
@@ -236,9 +203,24 @@ func (i *udpImpl) CheckSend(_ context.Context, this OutgoingDatagramStream) witg
 	return witgo.Ok[uint64, ErrorCode](1)
 }
 
-func (i *udpImpl) SubscribeIncoming(ctx context.Context, this IncomingDatagramStream) wasip2_io.Pollable {
-	return i.Subscribe(ctx, this)
+func (i *udpImpl) subscribe(ctx context.Context, this UDPSocket, dir manager_io.PollDirection) wasip2_io.Pollable {
+	sock, ok := i.host.TCPSocketManager().Get(this)
+	if !ok || sock.Fd == 0 {
+		p := manager_io.NewPollable(nil)
+		handle := i.host.PollManager().Add(p)
+		p.SetReady()
+		return handle
+	}
+
+	p := manager_io.NewPollaleFd(sock.Fd, dir)
+	handle := i.host.PollManager().Add(p)
+	return handle
 }
+
+func (i *udpImpl) SubscribeIncoming(ctx context.Context, this IncomingDatagramStream) wasip2_io.Pollable {
+	return i.subscribe(ctx, this, manager_io.PollDirectionRead)
+}
+
 func (i *udpImpl) SubscribeOutgoing(ctx context.Context, this OutgoingDatagramStream) wasip2_io.Pollable {
-	return i.Subscribe(ctx, this)
+	return i.subscribe(ctx, this, manager_io.PollDirectionWrite)
 }

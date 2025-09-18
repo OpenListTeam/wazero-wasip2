@@ -27,6 +27,9 @@ type Stream struct {
 	// 当 Guest 订阅此流时，该函数被调用以创建一个新的、与底层资源状态
 	// 关联的 Pollable 句柄。
 	OnSubscribe func() uint32 // Returns a Pollable handle
+
+	// 使用系统级别的轮训
+	Fd int
 }
 
 // Manager 现在是 witgo.ResourceManager 的一个类型别名，专门用于管理 Stream 资源。

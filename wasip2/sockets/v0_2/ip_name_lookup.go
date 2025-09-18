@@ -54,9 +54,7 @@ func (i *ipNameLookupImpl) ResolveNextAddress(_ context.Context, this ResolveAdd
 	case <-state.Done:
 		// 已完成
 		if state.Error != nil {
-			// 如果解析出错，返回错误
-			// TODO: 更精细的错误映射
-			return witgo.Err[witgo.Option[IPAddress], ErrorCode](ErrorCodeNameUnresolvable)
+			return witgo.Err[witgo.Option[IPAddress], ErrorCode](mapDnsError(state.Error))
 		}
 
 		if state.Index >= len(state.Addresses) {
@@ -86,7 +84,7 @@ func (i *ipNameLookupImpl) Subscribe(_ context.Context, this ResolveAddressStrea
 	state, ok := i.host.ResolveAddressStreamManager().Get(this)
 	if !ok {
 		p := manager_io.NewPollable(nil)
-		close(p.ReadyChan) // 无效句柄立即就绪
+		p.SetReady()
 		return i.host.PollManager().Add(p)
 	}
 
@@ -96,7 +94,7 @@ func (i *ipNameLookupImpl) Subscribe(_ context.Context, this ResolveAddressStrea
 	// 启动一个 goroutine 等待解析完成，然后关闭 pollable 的 channel
 	go func() {
 		<-state.Done
-		close(p.ReadyChan)
+		p.SetReady()
 	}()
 
 	return handle

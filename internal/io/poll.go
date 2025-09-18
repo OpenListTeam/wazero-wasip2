@@ -4,6 +4,16 @@ import (
 	witgo "wazero-wasip2/wit-go"
 )
 
+// PollDirection specifies the I/O direction to monitor.
+type PollDirection int
+
+const (
+	// PollDirectionRead monitors for read readiness (e.g., data available).
+	PollDirectionRead PollDirection = iota
+	// PollDirectionWrite monitors for write readiness (e.g., buffer has space).
+	PollDirectionWrite
+)
+
 // Pollable 代表一个可轮询的 I/O 事件状态。
 // 它使用一个 channel 来进行阻塞，并用 atomic.Value 来实现对 channel 的无锁读取。
 type Pollable struct {
@@ -11,6 +21,10 @@ type Pollable struct {
 	ReadyChan chan struct{}
 	// Cancel 用于在 Guest drop 句柄时，取消底层的异步操作（如定时器）。
 	Cancel func()
+
+	// 使用系统级别的轮训
+	Fd        int
+	Direction PollDirection
 }
 
 // NewPollable 创建一个新的 Pollable 实例。
@@ -19,11 +33,21 @@ func NewPollable(cancel func()) *Pollable {
 		ReadyChan: make(chan struct{}),
 		Cancel:    cancel,
 	}
+}
 
+func NewPollaleFd(fd int, dir PollDirection) *Pollable {
+	return &Pollable{
+		Fd:        fd,
+		Direction: dir,
+	}
 }
 
 // IsReady 以非阻塞方式检查 Pollable 是否就绪。
 func (p *Pollable) IsReady() bool {
+	if p.ReadyChan == nil {
+		return true
+	}
+
 	select {
 	case <-p.ReadyChan:
 		return true
@@ -34,11 +58,18 @@ func (p *Pollable) IsReady() bool {
 
 // Block 阻塞直到 Pollable 就绪。
 func (p *Pollable) Block() {
+	if p.ReadyChan == nil {
+		return
+	}
 	<-p.ReadyChan
 }
 
 // SetReady 将 Pollable 状态设置为就绪。
 func (p *Pollable) SetReady() {
+	if p.ReadyChan == nil {
+		return
+	}
+
 	select {
 	case <-p.ReadyChan:
 	default:

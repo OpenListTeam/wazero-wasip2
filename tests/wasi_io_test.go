@@ -9,7 +9,11 @@ import (
 	"wazero-wasip2/wasip2"
 
 	manager_io "wazero-wasip2/internal/io"
+	wasi_clocks "wazero-wasip2/wasip2/clocks"
+	wasi_filesystem "wazero-wasip2/wasip2/filesystem"
 	wasi_io "wazero-wasip2/wasip2/io"
+	wasi_random "wazero-wasip2/wasip2/random"
+	wasi_sockets "wazero-wasip2/wasip2/sockets"
 
 	witgo "wazero-wasip2/wit-go"
 
@@ -33,6 +37,10 @@ func TestWasiIO(t *testing.T) {
 	// 创建我们的 wasip2.Host 实例，并启用所有需要的模块。
 	h := wasip2.NewHost(
 		wasi_io.Module("0.2.0"),
+		wasi_random.Module("0.2.0"),
+		wasi_clocks.Module("0.2.0"),
+		wasi_filesystem.Module("0.2.0"),
+		wasi_sockets.Module("0.2.0"),
 	)
 	// 将我们的 Host 实现实例化到 wazero 运行时中。
 	err = h.Instantiate(ctx, r)

@@ -4,7 +4,9 @@ package v0_2
 
 import (
 	"io/fs"
+	"os"
 	"syscall"
+	"time"
 	witgo "wazero-wasip2/wit-go"
 )
 
@@ -27,4 +29,15 @@ func goFileInfoToDescriptorStat(info fs.FileInfo) DescriptorStat {
 		stat.StatusChangeTimestamp = witgo.None[Datetime]()
 	}
 	return stat
+}
+
+func GetATime(info os.FileInfo) (time.Time, error) {
+	// 从FileInfo中获取底层的syscall.Stat_t
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return time.Time{}, syscall.EINVAL
+	}
+
+	// 转换为time.Time
+	return time.Unix(stat.Atim.Sec, int64(stat.Atim.Nsec)), nil
 }
