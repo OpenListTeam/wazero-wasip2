@@ -18,7 +18,7 @@ func NewMonotonicClock() wasip2.Implementation {
 
 func (i *wasiMonotonicClock) Name() string { return "wasi:clocks/monotonic-clock" }
 func (i *wasiMonotonicClock) Versions() []string {
-	return []string{"0.2.0", "0.2.1", "0.2.2", "0.2.3", "0.2.4", "0.2.5"}
+	return []string{"0.2.0", "0.2.1", "0.2.2", "0.2.3", "0.2.4", "0.2.5", "0.2.6", "0.2.7"}
 }
 
 func (i *wasiMonotonicClock) Instantiate(_ context.Context, h *wasip2.Host, b wazero.HostModuleBuilder) error {

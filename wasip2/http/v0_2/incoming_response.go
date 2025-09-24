@@ -2,15 +2,15 @@ package v0_2
 
 import (
 	"context"
-	"wazero-wasip2/internal/http"
+	manager_http "wazero-wasip2/internal/http"
 	witgo "wazero-wasip2/wit-go"
 )
 
 type incomingResponseImpl struct {
-	hm *http.HTTPManager
+	hm *manager_http.HTTPManager
 }
 
-func newIncomingResponseImpl(hm *http.HTTPManager) *incomingResponseImpl {
+func newIncomingResponseImpl(hm *manager_http.HTTPManager) *incomingResponseImpl {
 	return &incomingResponseImpl{hm: hm}
 }
 
@@ -50,8 +50,8 @@ func (i *incomingResponseImpl) Consume(_ context.Context, this IncomingResponse)
 	}
 	resp.BodyConsumed = true
 
-	// 创建一个 incoming-body 资源来包装 Go 的 http.Response.Body
-	// body := &http.IncomingBody{Body: resp.Response.Body}
+	// 创建一个 incoming-body 资源来包装 Go 的 manager_http.Response.Body
+	// body := &manager_http.IncomingBody{Body: resp.Response.Body}
 	// handle := i.hm.IncomingBodies.Add(body)
 	// resp.BodyHandle = handle
 

@@ -17,8 +17,8 @@ func newPollImpl(pm *io.PollManager) *pollImpl {
 
 // DropPollable 是 pollable 资源的析构函数。
 func (i *pollImpl) DropPollable(_ context.Context, handle Pollable) {
-	if p, ok := i.pm.Get(handle); ok && p.Cancel != nil {
-		p.Cancel()
+	if p, ok := i.pm.Get(handle); ok {
+		p.Close() // 调用接口的 Close 方法
 	}
 	i.pm.Remove(handle)
 }
@@ -27,7 +27,7 @@ func (i *pollImpl) DropPollable(_ context.Context, handle Pollable) {
 func (i *pollImpl) Ready(_ context.Context, this Pollable) bool {
 	p, ok := i.pm.Get(this)
 	if !ok {
-		return true
+		return true // 无效句柄被认为是“就绪”的，以便调用者可以发现错误。
 	}
 	return p.IsReady()
 }
@@ -43,60 +43,33 @@ func (i *pollImpl) Block(_ context.Context, this Pollable) {
 
 func (i *pollImpl) Poll(_ context.Context, handles []Pollable) []uint32 {
 	if len(handles) == 0 {
-		return []uint32{}
+		panic("poll input list cannot be empty")
 	}
 
+	// 1. 快速非阻塞检查
 	var readyIndexes []uint32
-	var pollFds []pollFd
-
 	for j, handle := range handles {
-		if p, ok := i.pm.Get(handle); ok && p.IsReady() {
+		if i.Ready(context.Background(), handle) {
 			readyIndexes = append(readyIndexes, uint32(j))
-		} else if s, ok := i.pm.Get(handle); ok && s.Fd != 0 {
-			// 如果是基于 Fd 的流，则添加到轮询列表
-			pfd := pollFd{Fd: int32(s.Fd)}
-			if s.Direction == io.PollDirectionRead {
-				pfd.Events = pollEventRead
-			} else {
-				pfd.Events = pollEventWrite
-			}
-			pollFds = append(pollFds, pfd)
 		}
 	}
-
 	if len(readyIndexes) > 0 {
 		return readyIndexes
 	}
 
-	if len(pollFds) == 0 {
-		// 没有可轮询的 Fd，阻塞直到其中一个 pollable 就绪
-		// (例如，定时器)
-		cases := make([]reflect.SelectCase, len(handles))
-		for j, handle := range handles {
-			ch := make(chan struct{})
-			if p, ok := i.pm.Get(handle); ok {
-				ch = p.Channel()
-			}
-			cases[j] = reflect.SelectCase{
-				Dir:  reflect.SelectRecv,
-				Chan: reflect.ValueOf(ch),
-			}
+	// 2. 构造 select cases 并阻塞
+	cases := make([]reflect.SelectCase, len(handles))
+	for j, handle := range handles {
+		ch := make(chan struct{}) // 默认创建一个永不就绪的 channel
+		if p, ok := i.pm.Get(handle); ok {
+			ch = p.Channel()
 		}
-		chosen, _, _ := reflect.Select(cases)
-		return []uint32{uint32(chosen)}
-	}
-
-	// 执行平台特定的轮询
-	n, err := poll(pollFds, 100) // 100ms timeout
-	if n == 0 || err != nil {
-		return []uint32{}
-	}
-
-	for j, pfd := range pollFds {
-		if (pfd.Revents&pfd.Events) != 0 || (pfd.Revents&pollEventError) != 0 {
-			readyIndexes = append(readyIndexes, uint32(j))
+		cases[j] = reflect.SelectCase{
+			Dir:  reflect.SelectRecv,
+			Chan: reflect.ValueOf(ch),
 		}
 	}
 
-	return readyIndexes
+	chosen, _, _ := reflect.Select(cases)
+	return []uint32{uint32(chosen)}
 }

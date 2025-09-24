@@ -1,46 +1,51 @@
 package v0_2
 
 import (
-	"io"
 	gohttp "net/http"
-	"wazero-wasip2/internal/http"
+	"strconv"
+	manager_http "wazero-wasip2/internal/http"
 	witgo "wazero-wasip2/wit-go"
 )
 
 type outgoingResponseImpl struct {
-	hm *http.HTTPManager
+	hm *manager_http.HTTPManager
 }
 
-func newOutgoingResponseImpl(hm *http.HTTPManager) *outgoingResponseImpl {
+func newOutgoingResponseImpl(hm *manager_http.HTTPManager) *outgoingResponseImpl {
 	return &outgoingResponseImpl{hm: hm}
 }
 
 func (i *outgoingResponseImpl) Constructor(headers Headers) OutgoingResponse {
-	// Create the in-memory pipe. The guest writes to 'w', the host reads from 'r'.
-	r, w := io.Pipe()
-
-	resp := &http.OutgoingResponse{
+	resp := &manager_http.OutgoingResponse{
 		StatusCode: gohttp.StatusOK,
 		Headers:    headers,
-		Body:       r, // Store the reader for the host to use.
-		BodyWriter: w, // Store the writer for the guest's stream.
 	}
 
-	// Create the resource for the response itself.
 	id := i.hm.OutgoingResponses.Add(resp)
 
-	// Create the resource for the outgoing-body.
-	bodyID := i.hm.Bodies.Add(&http.OutgoingBody{
-		BodyWriter: w,
-		Request:    id, // Link body back to its parent response.
-	})
+	var contentLength *uint64
+	if headerFields, ok := i.hm.Fields.Get(headers); ok {
+		if cl, ok := headerFields["content-length"]; ok && len(cl) > 0 {
+			if val, err := strconv.ParseUint(cl[0], 10, 64); err == nil {
+				contentLength = &val
+			}
+		}
+	}
 
-	// Associate the body handle with the response.
+	bodyID, bodyReader, bodyWriter := i.hm.NewOutgoingBody(id, contentLength)
 	resp.BodyHandle = bodyID
+	resp.Body = bodyReader
+	resp.BodyWriter = bodyWriter
 
 	return id
 }
+
 func (i *outgoingResponseImpl) Drop(this OutgoingResponse) {
+	if resp, ok := i.hm.OutgoingResponses.Get(this); ok {
+		if resp.BodyHandle != 0 {
+			i.hm.Bodies.Remove(resp.BodyHandle)
+		}
+	}
 	i.hm.OutgoingResponses.Remove(this)
 }
 

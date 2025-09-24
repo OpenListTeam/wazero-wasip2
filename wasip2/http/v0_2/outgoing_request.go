@@ -2,31 +2,49 @@ package v0_2
 
 import (
 	"context"
-	"io"
-	"wazero-wasip2/internal/http"
-	"wazero-wasip2/internal/streams"
+	"strconv"
+	manager_http "wazero-wasip2/internal/http"
 	witgo "wazero-wasip2/wit-go"
 )
 
 type outgoingRequestImpl struct {
-	hm *http.HTTPManager
+	hm *manager_http.HTTPManager
 }
 
-func newOutgoingRequestImpl(hm *http.HTTPManager) *outgoingRequestImpl {
+func newOutgoingRequestImpl(hm *manager_http.HTTPManager) *outgoingRequestImpl {
 	return &outgoingRequestImpl{hm: hm}
 }
 
 func (i *outgoingRequestImpl) Constructor(fields Fields) OutgoingRequest {
-	pr, pw := io.Pipe()
-	req := &http.OutgoingRequest{
-		Headers:    fields,
-		Body:       pr,
-		BodyWriter: pw,
+	req := &manager_http.OutgoingRequest{
+		Headers: fields,
 	}
-	return i.hm.OutgoingRequests.Add(req)
+
+	handle := i.hm.OutgoingRequests.Add(req)
+
+	var contentLength *uint64
+	if headerFields, ok := i.hm.Fields.Get(fields); ok {
+		if cl, ok := headerFields["content-length"]; ok && len(cl) > 0 {
+			if val, err := strconv.ParseUint(cl[0], 10, 64); err == nil {
+				contentLength = &val
+			}
+		}
+	}
+
+	bodyHandle, bodyReader, bodyWriter := i.hm.NewOutgoingBody(handle, contentLength)
+	req.BodyHandle = bodyHandle
+	req.Body = bodyReader
+	req.BodyWriter = bodyWriter
+
+	return handle
 }
 
 func (i *outgoingRequestImpl) Drop(_ context.Context, handle OutgoingRequest) {
+	if req, ok := i.hm.OutgoingRequests.Get(handle); ok {
+		if req.BodyHandle != 0 {
+			i.hm.Bodies.Remove(req.BodyHandle)
+		}
+	}
 	i.hm.OutgoingRequests.Remove(handle)
 }
 
@@ -35,20 +53,10 @@ func (i *outgoingRequestImpl) Body(_ context.Context, this OutgoingRequest) witg
 	if !ok {
 		return witgo.Err[OutgoingBody, witgo.Unit](witgo.Unit{})
 	}
-	if req.BodyHandle != 0 {
-		return witgo.Ok[OutgoingBody, witgo.Unit](req.BodyHandle)
+	if req.BodyHandle == 0 {
+		return witgo.Err[OutgoingBody, witgo.Unit](witgo.Unit{})
 	}
-
-	stream := &streams.Stream{Writer: req.BodyWriter, Closer: req.BodyWriter}
-	streamHandle := i.hm.Streams.Add(stream)
-
-	body := &http.OutgoingBody{
-		OutputStreamHandle: streamHandle,
-		BodyWriter:         req.BodyWriter,
-	}
-	bodyHandle := i.hm.Bodies.Add(body)
-	req.BodyHandle = bodyHandle
-	return witgo.Ok[OutgoingBody, witgo.Unit](bodyHandle)
+	return witgo.Ok[OutgoingBody, witgo.Unit](req.BodyHandle)
 }
 
 // --- Getters ---

@@ -2,15 +2,16 @@ package v0_2
 
 import (
 	"context"
-	"wazero-wasip2/internal/http"
+	manager_http "wazero-wasip2/internal/http"
+	manager_io "wazero-wasip2/internal/io"
 	witgo "wazero-wasip2/wit-go"
 )
 
 type futureIncomingResponseImpl struct {
-	hm *http.HTTPManager
+	hm *manager_http.HTTPManager
 }
 
-func newFutureIncomingResponseImpl(hm *http.HTTPManager) *futureIncomingResponseImpl {
+func newFutureIncomingResponseImpl(hm *manager_http.HTTPManager) *futureIncomingResponseImpl {
 	return &futureIncomingResponseImpl{hm: hm}
 }
 
@@ -23,19 +24,24 @@ func (i *futureIncomingResponseImpl) Drop(_ context.Context, handle FutureIncomi
 func (i *futureIncomingResponseImpl) Subscribe(_ context.Context, this FutureIncomingResponse) Pollable {
 	future, ok := i.hm.Futures.Get(this)
 	if !ok {
-		ch := make(chan struct{})
-		close(ch)
-		return i.hm.Poll.Add(ch)
+		// 对于无效句柄，返回一个立即就绪的 pollable
+		return i.hm.Poll.Add(manager_io.ReadyPollable)
 	}
 
 	future.PollableOnce.Do(func() {
-		future.Pollable = make(chan struct{})
+		ctx, cancel := context.WithCancel(context.Background())
+		// 创建一个新的 pollable，而不是裸 channel
+		future.Pollable = manager_io.NewPollable(cancel)
 		go func() {
-			res, ok := <-future.ResultChan
-			if ok {
-				future.Result.Store(&res) // 原子性地存储结果
+			select {
+			case <-ctx.Done():
+				return
+			case res, ok := <-future.ResultChan:
+				if ok {
+					future.Result.Store(&res) // 原子性地存储结果
+				}
+				future.Pollable.SetReady() // 在就绪时调用 SetReady
 			}
-			close(future.Pollable)
 		}()
 	})
 

@@ -1,8 +1,8 @@
 package v0_2
 
 import (
+	manager_sockets "wazero-wasip2/internal/sockets"
 	io_v0_2 "wazero-wasip2/wasip2/io/v0_2"
-	witgo "wazero-wasip2/wit-go"
 )
 
 // --- Imported Types ---
@@ -53,48 +53,26 @@ const (
 	ShutdownTypeBoth                        // 关闭双向
 )
 
-type IPAddressFamily uint8
+type IPAddressFamily = manager_sockets.IPAddressFamily
 
 const (
-	IPAddressFamilyIPV4 IPAddressFamily = iota
-	IPAddressFamilyIPV6
+	IPAddressFamilyIPV4 = manager_sockets.IPAddressFamilyIPV4
+	IPAddressFamilyIPV6 = manager_sockets.IPAddressFamilyIPV6
 )
 
 // --- Records and Variants ---
 
-type IPv4Address = [4]byte
-type IPv6Address = [8]uint16
+type IPv4Address = manager_sockets.IPv4Address
+type IPv6Address = manager_sockets.IPv6Address
 
-type IPAddress struct {
-	IPV4 *IPv4Address `wit:"case(0)"`
-	IPV6 *IPv6Address `wit:"case(1)"`
-}
+type IPAddress = manager_sockets.IPAddress
+type IPv4SocketAddress = manager_sockets.IPv4SocketAddress
+type IPv6SocketAddress = manager_sockets.IPv6SocketAddress
 
-type IPv4SocketAddress struct {
-	Port    uint16
-	Address IPv4Address
-}
-
-type IPv6SocketAddress struct {
-	Port     uint16
-	FlowInfo uint32
-	Address  IPv6Address
-	ScopeID  uint32
-}
-
-type IPSocketAddress struct {
-	IPV4 *IPv4SocketAddress `wit:"case(0)"`
-	IPV6 *IPv6SocketAddress `wit:"case(1)"`
-}
+type IPSocketAddress = manager_sockets.IPSocketAddress
 
 // IncomingDatagram 代表一个接收到的 UDP 数据报。
-type IncomingDatagram struct {
-	Data          []byte
-	RemoteAddress IPSocketAddress
-}
+type IncomingDatagram = manager_sockets.IncomingDatagram
 
 // OutgoingDatagram 代表一个待发送的 UDP 数据报。
-type OutgoingDatagram struct {
-	Data          []byte
-	RemoteAddress witgo.Option[IPSocketAddress]
-}
+type OutgoingDatagram = manager_sockets.OutgoingDatagram

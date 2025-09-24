@@ -2,7 +2,7 @@ package v0_2
 
 import (
 	"context"
-	"wazero-wasip2/internal/http"
+	manager_http "wazero-wasip2/internal/http"
 	"wazero-wasip2/wasip2"
 	witgo "wazero-wasip2/wit-go"
 
@@ -12,10 +12,10 @@ import (
 // --- wasi:http/types@0.2.0 implementation ---
 
 type httpTypes struct {
-	hm *http.HTTPManager
+	hm *manager_http.HTTPManager
 }
 
-func NewTypes(hm *http.HTTPManager) wasip2.Implementation {
+func NewTypes(hm *manager_http.HTTPManager) wasip2.Implementation {
 	return &httpTypes{hm: hm}
 }
 
@@ -124,19 +124,41 @@ func (i *httpTypes) Instantiate(_ context.Context, h *wasip2.Host, builder wazer
 	handler := newOutgoingHandlerImpl(h.HTTPManager())
 	exporter.Export("handle", handler.Handle)
 
+	// --- incoming-handler (placeholder for world linking) ---
+	// Although the guest exports this, we define it here so that the host
+	// knows about the interface when linking a world that uses it.
+	incomingHandler := NewIncomingHandler(hm)
+	// We don't export any functions for it from the host side.
+	_ = incomingHandler
+
 	// --- http-error-code ---
-	// http-error-code 是一个静态函数，没有自己的资源
-	exporter.Export("http-error-code", httpErrorCode)
+	exporter.Export("http-error-code", func(err WasiError) witgo.Option[ErrorCode] {
+		// Get the underlying Go error from the wasi:io/error resource handle
+		goErr, ok := h.ErrorManager().Get(err)
+		if !ok {
+			return witgo.None[ErrorCode]()
+		}
+
+		// Map the Go error to a wasi:http ErrorCode
+		httpErr := mapGoErrToWasiHttpErr(goErr)
+
+		// Check if it's an unclassified "internal error"
+		if httpErr.InternalError != nil && httpErr.InternalError.Some != nil && *httpErr.InternalError.Some == goErr.Error() {
+			return witgo.None[ErrorCode]()
+		}
+
+		return witgo.Some(httpErr)
+	})
 	return nil
 }
 
 // --- wasi:http/outgoing-handler@0.2.0 implementation ---
 
 type outgoingHandler struct {
-	hm *http.HTTPManager
+	hm *manager_http.HTTPManager
 }
 
-func NewOutgoingHandler(hm *http.HTTPManager) wasip2.Implementation {
+func NewOutgoingHandler(hm *manager_http.HTTPManager) wasip2.Implementation {
 	return &outgoingHandler{hm: hm}
 }
 
@@ -148,10 +170,4 @@ func (i *outgoingHandler) Instantiate(_ context.Context, h *wasip2.Host, builder
 	exporter := witgo.NewExporter(builder)
 	exporter.Export("handle", handler.Handle)
 	return nil
-}
-
-func httpErrorCode(err WasiError) witgo.Option[ErrorCode] {
-	// 具体的实现需要根据 WasiError 的定义来解析
-	// 此处仅为示例
-	return witgo.None[ErrorCode]()
 }

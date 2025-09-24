@@ -3,20 +3,20 @@ package v0_2
 import (
 	"context"
 	"time"
-	"wazero-wasip2/internal/http"
+	manager_http "wazero-wasip2/internal/http"
 	witgo "wazero-wasip2/wit-go"
 )
 
 type requestOptionsImpl struct {
-	hm *http.HTTPManager
+	hm *manager_http.HTTPManager
 }
 
-func newRequestOptionsImpl(hm *http.HTTPManager) *requestOptionsImpl {
+func newRequestOptionsImpl(hm *manager_http.HTTPManager) *requestOptionsImpl {
 	return &requestOptionsImpl{hm: hm}
 }
 
 func (i *requestOptionsImpl) Constructor() RequestOptions {
-	return i.hm.Options.Add(&http.RequestOptions{})
+	return i.hm.Options.Add(&manager_http.RequestOptions{})
 }
 
 func (i *requestOptionsImpl) Drop(_ context.Context, handle RequestOptions) {

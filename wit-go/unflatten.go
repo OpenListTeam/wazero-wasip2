@@ -213,7 +213,7 @@ func (e *Exporter) makeWrapperFunc(funcType reflect.Type, funcVal reflect.Value)
 		ctx := args[0].Interface().(context.Context)
 		module := args[1].Interface().(api.Module)
 
-		h, err := e.getHost(module)
+		h, err := NewHost(module)
 		if err != nil {
 			panic(fmt.Sprintf("failed to get host for calling module: %v", err))
 		}

@@ -13,6 +13,43 @@ const (
 	IPAddressFamilyIPV6
 )
 
+type IPv4Address = [4]byte
+type IPv6Address = [8]uint16
+
+type IPAddress struct {
+	IPV4 *IPv4Address `wit:"case(0)"`
+	IPV6 *IPv6Address `wit:"case(1)"`
+}
+
+type IPv4SocketAddress struct {
+	Port    uint16
+	Address IPv4Address
+}
+
+type IPv6SocketAddress struct {
+	Port     uint16
+	FlowInfo uint32
+	Address  IPv6Address
+	ScopeID  uint32
+}
+
+type IPSocketAddress struct {
+	IPV4 *IPv4SocketAddress `wit:"case(0)"`
+	IPV6 *IPv6SocketAddress `wit:"case(1)"`
+}
+
+// IncomingDatagram 代表一个接收到的 UDP 数据报。
+type IncomingDatagram struct {
+	Data          []byte
+	RemoteAddress IPSocketAddress
+}
+
+// OutgoingDatagram 代表一个待发送的 UDP 数据报。
+type OutgoingDatagram struct {
+	Data          []byte
+	RemoteAddress witgo.Option[IPSocketAddress]
+}
+
 // Network represents the capability to access the network.
 // In this implementation, it's a placeholder struct.
 type Network struct{}
@@ -56,6 +93,10 @@ type UDPSocket struct {
 	Conn *net.UDPConn
 	// The address family of the socket.
 	Family IPAddressFamily
+
+	// 新增字段
+	Reader *AsyncUDPReader
+	Writer *AsyncUDPWriter
 }
 
 // ResolveAddressStreamState 保存了域名解析操作的状态。

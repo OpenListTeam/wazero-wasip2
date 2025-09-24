@@ -32,9 +32,7 @@ func (i *monotonicClockImpl) Resolution(_ context.Context) Duration {
 func (i *monotonicClockImpl) SubscribeInstant(_ context.Context, when Instant) Pollable {
 	now := i.Now(context.Background())
 	if when <= now {
-		p := io.NewPollable(nil)
-		close(p.ReadyChan) // 立即就绪
-		return i.pm.Add(p)
+		return i.pm.Add(io.ReadyPollable)
 	}
 
 	duration := time.Duration(when-now) * time.Nanosecond
@@ -55,9 +53,7 @@ func (i *monotonicClockImpl) SubscribeInstant(_ context.Context, when Instant) P
 // SubscribeDuration creates a pollable that resolves after a duration.
 func (i *monotonicClockImpl) SubscribeDuration(_ context.Context, when Duration) Pollable {
 	if when == 0 {
-		p := io.NewPollable(nil)
-		close(p.ReadyChan) // 立即就绪
-		return i.pm.Add(p)
+		return i.pm.Add(io.ReadyPollable)
 	}
 
 	duration := time.Duration(when) * time.Nanosecond

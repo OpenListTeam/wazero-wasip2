@@ -2,15 +2,16 @@ package v0_2
 
 import (
 	"context"
-	"wazero-wasip2/internal/http"
+	"fmt"
+	manager_http "wazero-wasip2/internal/http"
 	witgo "wazero-wasip2/wit-go"
 )
 
 type outgoingBodyImpl struct {
-	hm *http.HTTPManager
+	hm *manager_http.HTTPManager
 }
 
-func newOutgoingBodyImpl(hm *http.HTTPManager) *outgoingBodyImpl {
+func newOutgoingBodyImpl(hm *manager_http.HTTPManager) *outgoingBodyImpl {
 	return &outgoingBodyImpl{hm: hm}
 }
 
@@ -40,8 +41,24 @@ func (i *outgoingBodyImpl) Finish(_ context.Context, this OutgoingBody, trailers
 	if !ok {
 		return witgo.Err[witgo.Unit, ErrorCode](ErrorCode{InternalError: witgo.SomePtr("invalid outgoing_body handle")})
 	}
-	// 关闭 PipeWriter，这将向 PipeReader 发出 EOF 信号，表示 body 已经写完。
+
+	// 关闭 BodyWriter，这将向 PipeReader 发出 EOF 信号，表示 body 已经写完。
+	// 这也会确保所有在 AsyncWriteWrapper 缓冲区中的数据被刷出。
 	body.BodyWriter.Close()
-	// TODO: 处理 trailers
+
+	// 【新增】执行 Content-Length 校验
+	if body.ContentLength != nil {
+		bytesWritten := body.BytesWritten.Load()
+		if bytesWritten != *body.ContentLength {
+			errMsg := fmt.Sprintf("content-length mismatch: header specified %d, but %d bytes were written", *body.ContentLength, bytesWritten)
+			return witgo.Err[witgo.Unit, ErrorCode](ErrorCode{HTTPProtocolError: &witgo.Unit{}, InternalError: witgo.SomePtr(errMsg)})
+		}
+	}
+
+	// TODO: trailers 的处理
+	if trailers.Some != nil {
+		// 具体的实现逻辑需要根据是 request 还是 response 来定。
+	}
+
 	return witgo.Ok[witgo.Unit, ErrorCode](witgo.Unit{})
 }

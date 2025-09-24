@@ -17,7 +17,7 @@ func (i *tcpCreateSocketImpl) CreateTCPSocket(_ context.Context, addressFamily I
 	}
 
 	domain := unix.AF_INET
-	if family == sockets.IPAddressFamilyIPV6 {
+	if family == IPAddressFamilyIPV6 {
 		domain = unix.AF_INET6
 	}
 
@@ -35,7 +35,7 @@ func (i *tcpCreateSocketImpl) CreateTCPSocket(_ context.Context, addressFamily I
 	}
 
 	// 默认启用 IPV6_V6ONLY 以符合现代网络实践
-	if family == sockets.IPAddressFamilyIPV6 {
+	if family == IPAddressFamilyIPV6 {
 		// 忽略此处的错误是安全的，因为并非所有系统都支持此选项
 		unix.SetsockoptInt(sockFd, unix.IPPROTO_IPV6, unix.IPV6_V6ONLY, 1)
 	}

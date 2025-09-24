@@ -1,15 +1,17 @@
 package v0_2
 
 import (
-	"wazero-wasip2/internal/http"
+	"context"
+	manager_http "wazero-wasip2/internal/http"
+	manager_io "wazero-wasip2/internal/io"
 	witgo "wazero-wasip2/wit-go"
 )
 
 type futureTrailersImpl struct {
-	hm *http.HTTPManager
+	hm *manager_http.HTTPManager
 }
 
-func newFutureTrailersImpl(hm *http.HTTPManager) *futureTrailersImpl {
+func newFutureTrailersImpl(hm *manager_http.HTTPManager) *futureTrailersImpl {
 	return &futureTrailersImpl{hm: hm}
 }
 
@@ -18,21 +20,28 @@ func (i *futureTrailersImpl) Drop(this FutureTrailers) {
 }
 
 func (i *futureTrailersImpl) Subscribe(this FutureTrailers) Pollable {
-	f, ok := i.hm.FutureTrailers.Get(this)
+	future, ok := i.hm.FutureTrailers.Get(this)
 	if !ok {
-		return 0
+		// 对于无效句柄，返回一个立即就绪的 pollable
+		return i.hm.Poll.Add(manager_io.ReadyPollable)
 	}
-	f.PollableOnce.Do(func() {
-		f.Pollable = make(chan struct{})
+
+	future.PollableOnce.Do(func() {
+		ctx, cancel := context.WithCancel(context.Background())
+		future.Pollable = manager_io.NewPollable(cancel)
 		go func() {
 			select {
-			case r := <-f.ResultChan:
-				f.Result.Store(&r)
-				close(f.Pollable)
+			case <-ctx.Done():
+				return
+			case res, ok := <-future.ResultChan:
+				if ok {
+					future.Result.Store(&res) // 原子性地存储结果
+				}
+				future.Pollable.SetReady() // 在就绪时调用 SetReady
 			}
 		}()
 	})
-	return i.hm.Poll.Add(f.Pollable)
+	return i.hm.Poll.Add(future.Pollable)
 }
 
 func (i *futureTrailersImpl) Get(this FutureTrailers) witgo.Option[witgo.Result[witgo.Result[witgo.Option[Trailers], ErrorCode], witgo.Unit]] {

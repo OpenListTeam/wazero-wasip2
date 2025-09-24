@@ -65,7 +65,6 @@ type ResponseOutparam struct {
 
 // IncomingBody 代表一个入站的 HTTP Body。
 type IncomingBody struct {
-	Body         io.ReadCloser
 	StreamHandle uint32 // 指向 input-stream 的句柄
 	StreamTaken  bool   // 标记 stream 是否已经被取出
 	Trailers     uint32 // 指向 future-trailers 的句柄
@@ -76,6 +75,9 @@ type OutgoingBody struct {
 	OutputStreamHandle uint32
 	BodyWriter         *io.PipeWriter
 	Request            uint32 // OutgoingRequest or OutgoingResponse
+
+	ContentLength *uint64
+	BytesWritten  atomic.Uint64
 }
 
 // FutureTrailers 代表一个尚未到达的 HTTP Trailers。
@@ -83,7 +85,7 @@ type FutureTrailers struct {
 	ResultChan   chan ResultTrailers
 	Result       atomic.Pointer[ResultTrailers]
 	Consumed     atomic.Bool
-	Pollable     chan struct{}
+	Pollable     *manager_io.ChannelPollable
 	PollableOnce sync.Once
 }
 
@@ -105,7 +107,7 @@ type FutureIncomingResponse struct {
 	ResultChan   chan Result
 	Result       atomic.Pointer[Result]
 	Consumed     atomic.Bool
-	Pollable     chan struct{}
+	Pollable     *manager_io.ChannelPollable
 	PollableOnce sync.Once
 }
 
@@ -155,4 +157,25 @@ func NewHTTPManager(sm *manager_io.StreamManager, poll *manager_io.PollManager) 
 		FutureTrailers:    witgo.NewResourceManager[*FutureTrailers](),
 		Options:           witgo.NewResourceManager[*RequestOptions](),
 	}
+}
+
+// parentHandle 是指所属的 OutgoingRequest 或 OutgoingResponse 的句柄
+func (hm *HTTPManager) NewOutgoingBody(parentHandle uint32, contentLength *uint64) (bodyHandle uint32, bodyReader *io.PipeReader, bodyWriter *io.PipeWriter) {
+	pr, pw := io.Pipe()
+
+	body := &OutgoingBody{
+		OutputStreamHandle: 0, // 稍后设置
+		BodyWriter:         pw,
+		Request:            parentHandle,
+		ContentLength:      contentLength,
+	}
+
+	// 【修改】在创建 stream 时传入 body.BytesWritten 的地址
+	stream := manager_io.NewAsyncStreamForWriter(pw, manager_io.WriterWritten(&body.BytesWritten))
+	streamHandle := hm.Streams.Add(stream)
+
+	body.OutputStreamHandle = streamHandle
+	bodyHandle = hm.Bodies.Add(body)
+
+	return bodyHandle, pr, pw
 }

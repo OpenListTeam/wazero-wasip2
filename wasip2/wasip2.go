@@ -3,8 +3,10 @@ package wasip2
 import (
 	"context"
 	"wazero-wasip2/internal/filesystem"
+	"wazero-wasip2/internal/http"
 	"wazero-wasip2/internal/io"
 	"wazero-wasip2/internal/sockets"
+	"wazero-wasip2/internal/tls"
 
 	"github.com/tetratelabs/wazero"
 )
@@ -24,7 +26,8 @@ type Host struct {
 	streamManager *io.StreamManager
 	errorManager  *io.ErrorManager
 	pollManager   *io.PollManager
-	// httpManager                 *http.HTTPManager
+	httpManager   *http.HTTPManager
+	tlsManager    *tls.TLSManager
 
 	// filesystem 管理器
 	filesystemManager           *filesystem.Manager
@@ -50,7 +53,8 @@ func NewHost(opts ...ModuleOption) *Host {
 		streamManager: streamManager,
 		errorManager:  errorManager,
 		pollManager:   pollManager,
-		// httpManager:                 http.NewHTTPManager(streamManager, pollManager),
+		httpManager:   http.NewHTTPManager(streamManager, pollManager),
+		tlsManager:    tls.NewTLSManager(),
 
 		filesystemManager:           filesystem.NewManager(),
 		directoryEntryStreamManager: filesystem.NewDirectoryEntryStreamManager(),
@@ -102,9 +106,9 @@ func (h *Host) PollManager() *io.PollManager {
 	return h.pollManager
 }
 
-// func (h *Host) HTTPManager() *http.HTTPManager {
-// 	return h.httpManager
-// }
+func (h *Host) HTTPManager() *http.HTTPManager {
+	return h.httpManager
+}
 
 // FilesystemManager 返回文件系统管理器。
 func (h *Host) FilesystemManager() *filesystem.Manager {
@@ -127,4 +131,8 @@ func (h *Host) UDPSocketManager() *sockets.UDPSocketManager {
 }
 func (h *Host) ResolveAddressStreamManager() *sockets.ResolveAddressStreamManager {
 	return h.resolveAddressStreamManager
+}
+
+func (h *Host) TLSManager() *tls.TLSManager {
+	return h.tlsManager
 }

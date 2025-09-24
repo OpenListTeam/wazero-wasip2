@@ -1,16 +1,17 @@
 package v0_2
 
 import (
-	"wazero-wasip2/wasip2/stream/v0_2"
+	wasip2_clocks "wazero-wasip2/wasip2/clocks/v0_2"
+	wasip2_io "wazero-wasip2/wasip2/io/v0_2"
 	witgo "wazero-wasip2/wit-go"
 )
 
 // 从 wasi:io 导入类型
-type InputStream = v0_2.InputStream
-type OutputStream = v0_2.OutputStream
-type WasiError = v0_2.WasiError
-type Pollable = uint32
-type Duration = uint64
+type InputStream = wasip2_io.InputStream
+type OutputStream = wasip2_io.OutputStream
+type WasiError = wasip2_io.Error
+type Pollable = wasip2_io.Pollable
+type Duration = wasip2_clocks.Duration
 
 type FieldKey = string
 type FieldValue = []byte

@@ -24,6 +24,7 @@ func newTypesImpl(h *wasip2.Host) *typesImpl {
 
 /// TODO:
 /// 1. 完善沙盒机制
+/// 2. 完善poll机制(可能没有必要)
 
 // --- descriptor resource methods ---
 
@@ -40,7 +41,7 @@ func (i *typesImpl) ReadViaStream(_ context.Context, this Descriptor, offset Fil
 		return witgo.Err[InputStream, ErrorCode](ErrorCodeBadDescriptor)
 	}
 	reader := io.NewSectionReader(d.File, int64(offset), -1)
-	stream := &manager_io.Stream{Reader: reader, Fd: int(d.File.Fd())}
+	stream := &manager_io.Stream{Reader: reader, Seeker: reader}
 	handle := i.host.StreamManager().Add(stream)
 	return witgo.Ok[InputStream, ErrorCode](handle)
 }
@@ -51,7 +52,7 @@ func (i *typesImpl) WriteViaStream(_ context.Context, this Descriptor, offset Fi
 		return witgo.Err[OutputStream, ErrorCode](ErrorCodeBadDescriptor)
 	}
 	writer := &sectionWriter{d.File, int64(offset)}
-	stream := &manager_io.Stream{Writer: writer, Fd: int(d.File.Fd())}
+	stream := &manager_io.Stream{Writer: writer}
 	handle := i.host.StreamManager().Add(stream)
 	return witgo.Ok[OutputStream, ErrorCode](handle)
 }
@@ -61,7 +62,7 @@ func (i *typesImpl) AppendViaStream(_ context.Context, this Descriptor) witgo.Re
 	if !ok {
 		return witgo.Err[OutputStream, ErrorCode](ErrorCodeBadDescriptor)
 	}
-	stream := &manager_io.Stream{Writer: d.File, Fd: int(d.File.Fd())}
+	stream := &manager_io.Stream{Writer: d.File, Flusher: &OsFileFlusher{w: d.File}}
 	handle := i.host.StreamManager().Add(stream)
 	return witgo.Ok[OutputStream, ErrorCode](handle)
 }
@@ -489,7 +490,7 @@ func (i *typesImpl) FilesystemErrorCode(ctx context.Context, err WasiError) witg
 
 // --- Helper: sectionWriter for WriteViaStream ---
 type sectionWriter struct {
-	w      io.WriterAt
+	w      *os.File
 	offset int64
 }
 
@@ -497,4 +498,12 @@ func (s *sectionWriter) Write(p []byte) (n int, err error) {
 	n, err = s.w.WriteAt(p, s.offset)
 	s.offset += int64(n)
 	return
+}
+
+type OsFileFlusher struct {
+	w interface{ Sync() error }
+}
+
+func (f *OsFileFlusher) Flush() error {
+	return f.w.Sync()
 }

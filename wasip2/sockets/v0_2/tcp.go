@@ -70,12 +70,14 @@ func (i *tcpImpl) FinishConnect(ctx context.Context, this TCPSocket) witgo.Resul
 		sock.State = sockets.TCPStateConnected
 
 		// 为连接创建输入输出流
-		stream := &manager_io.Stream{Reader: sock.Conn, Writer: sock.Conn, Closer: sock.Conn, Fd: sock.Fd}
-		streamHandle := i.host.StreamManager().Add(stream)
+		inStream := manager_io.NewAsyncStreamForReader(sock.Conn, manager_io.DontCloseReader())
+		inStreamHandle := i.host.StreamManager().Add(inStream)
+		outStream := manager_io.NewAsyncStreamForWriter(sock.Conn, manager_io.DontCloseWriter())
+		outStreamHandle := i.host.StreamManager().Add(outStream)
 
 		return witgo.Ok[witgo.Tuple[wasip2_io.InputStream, wasip2_io.OutputStream], ErrorCode](witgo.Tuple[wasip2_io.InputStream, wasip2_io.OutputStream]{
-			F0: streamHandle,
-			F1: streamHandle,
+			F0: inStreamHandle,
+			F1: outStreamHandle,
 		})
 
 	default:
@@ -137,13 +139,15 @@ func (i *tcpImpl) Accept(ctx context.Context, this TCPSocket) witgo.Result[witgo
 
 	// 为新的连接创建输入输出流
 	// conn 同时实现了 io.Reader 和 io.Writer
-	stream := &manager_io.Stream{Reader: conn, Writer: conn, Closer: conn}
-	streamHandle := i.host.StreamManager().Add(stream)
+	inStream := manager_io.NewAsyncStreamForReader(conn, manager_io.DontCloseReader())
+	inStreamHandle := i.host.StreamManager().Add(inStream)
+	outStream := manager_io.NewAsyncStreamForWriter(conn, manager_io.DontCloseWriter())
+	outStreamHandle := i.host.StreamManager().Add(outStream)
 
 	result := witgo.Tuple3[TCPSocket, wasip2_io.InputStream, wasip2_io.OutputStream]{
 		F0: newSockHandle,
-		F1: streamHandle, // F1 是 InputStream
-		F2: streamHandle, // F2 是 OutputStream
+		F1: inStreamHandle,  // F1 是 InputStream
+		F2: outStreamHandle, // F2 是 OutputStream
 	}
 
 	return witgo.Ok[witgo.Tuple3[TCPSocket, wasip2_io.InputStream, wasip2_io.OutputStream], ErrorCode](result)
@@ -320,20 +324,20 @@ func (i *tcpImpl) Subscribe(pctx context.Context, this TCPSocket) wasip2_io.Poll
 		}()
 		return handle
 
-	case sockets.TCPStateListening, sockets.TCPStateConnected:
-		// For listening or connected sockets, we can poll on the underlying file descriptor if it exists.
-		if sock.Fd != 0 {
-			// For listening, poll for readability (new connection). For connected, poll for writability.
-			direction := manager_io.PollDirectionWrite
-			if sock.State == sockets.TCPStateListening {
-				direction = manager_io.PollDirectionRead
-			}
-			// NOTE: Assuming NewPollaleFd exists and works as intended for OS-specific polling.
-			p := manager_io.NewPollaleFd(sock.Fd, direction)
-			handle := i.host.PollManager().Add(p)
-			return handle
-		}
-		// Fallthrough if Fd is not available
+	// case sockets.TCPStateListening, sockets.TCPStateConnected:
+	// 	// For listening or connected sockets, we can poll on the underlying file descriptor if it exists.
+	// 	if sock.Fd != 0 {
+	// 		// For listening, poll for readability (new connection). For connected, poll for writability.
+	// 		direction := manager_io.PollDirectionWrite
+	// 		if sock.State == sockets.TCPStateListening {
+	// 			direction = manager_io.PollDirectionRead
+	// 		}
+	// 		// NOTE: Assuming NewPollaleFd exists and works as intended for OS-specific polling.
+	// 		p := manager_io.NewPollaleFd(sock.Fd, direction)
+	// 		handle := i.host.PollManager().Add(p)
+	// 		return handle
+	// 	}
+	// 	// Fallthrough if Fd is not available
 
 	default:
 		// For other states (e.g., unbound, closed), the operation should fail quickly.

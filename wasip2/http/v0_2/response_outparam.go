@@ -1,15 +1,15 @@
 package v0_2
 
 import (
-	"wazero-wasip2/internal/http"
+	manager_http "wazero-wasip2/internal/http"
 	witgo "wazero-wasip2/wit-go"
 )
 
 type responseOutparamImpl struct {
-	hm *http.HTTPManager
+	hm *manager_http.HTTPManager
 }
 
-func newResponseOutparamImpl(hm *http.HTTPManager) *responseOutparamImpl {
+func newResponseOutparamImpl(hm *manager_http.HTTPManager) *responseOutparamImpl {
 	return &responseOutparamImpl{hm: hm}
 }
 

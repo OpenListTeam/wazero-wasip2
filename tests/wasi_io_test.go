@@ -60,11 +60,11 @@ func TestWasiIO(t *testing.T) {
 
 		// 2. 将 PipeReader 封装成我们的 Stream 对象。
 		//    我们将 PipeReader 作为 Reader 和 Closer。
-		stream := &manager_io.Stream{Reader: pr, Closer: pr}
-
+		readStream := manager_io.NewAsyncStreamForReader(pr)
 		// 3. 将 Stream 对象添加到 StreamManager 中，获得一个句柄。
 		//    这个句柄将作为参数传递给 Guest。
-		handle := h.StreamManager().Add(stream)
+		handle := h.StreamManager().Add(readStream)
+
 		defer h.StreamManager().Remove(handle) // 测试结束后清理
 
 		// 4. 在一个单独的 goroutine 中，向 PipeWriter 写入数据。

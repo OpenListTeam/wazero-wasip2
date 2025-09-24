@@ -6,27 +6,26 @@ import (
 	"io/fs"
 	"net"
 	"syscall"
-	"wazero-wasip2/internal/sockets"
 )
 
 // fromIPAddressFamily 将 WIT 的 IPAddressFamily 转换为内部的通用类型。
-func fromIPAddressFamily(family IPAddressFamily) (sockets.IPAddressFamily, error) {
+func fromIPAddressFamily(family IPAddressFamily) (IPAddressFamily, error) {
 	switch family {
 	case IPAddressFamilyIPV4:
-		return sockets.IPAddressFamilyIPV4, nil
+		return IPAddressFamilyIPV4, nil
 	case IPAddressFamilyIPV6:
-		return sockets.IPAddressFamilyIPV6, nil
+		return IPAddressFamilyIPV6, nil
 	default:
 		return 0, errors.New("invalid ip-address-family")
 	}
 }
 
 // toIPAddressFamily 将内部的通用类型转换为 WIT 的 IPAddressFamily。
-func toIPAddressFamily(family sockets.IPAddressFamily) (IPAddressFamily, error) {
+func toIPAddressFamily(family IPAddressFamily) (IPAddressFamily, error) {
 	switch family {
-	case sockets.IPAddressFamilyIPV4:
+	case IPAddressFamilyIPV4:
 		return IPAddressFamilyIPV4, nil
-	case sockets.IPAddressFamilyIPV6:
+	case IPAddressFamilyIPV6:
 		return IPAddressFamilyIPV6, nil
 	default:
 		return 0, errors.New("invalid ip-address-family")
@@ -100,6 +99,7 @@ func mapOsError(err error) ErrorCode {
 		err = opErr.Err // 深入到根本的 syscall 错误
 	}
 
+	const EWOULDBLOCK syscall.Errno = syscall.Errno(0xb)
 	var errno syscall.Errno
 	if errors.As(err, &errno) {
 		switch errno {
@@ -136,7 +136,7 @@ func mapOsError(err error) ErrorCode {
 			return ErrorCodeNotSupported
 		case syscall.ETIMEDOUT:
 			return ErrorCodeTimeout
-		case syscall.EWOULDBLOCK:
+		case EWOULDBLOCK:
 			return ErrorCodeWouldBlock
 		}
 	}

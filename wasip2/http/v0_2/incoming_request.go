@@ -1,15 +1,15 @@
 package v0_2
 
 import (
-	"wazero-wasip2/internal/http"
+	manager_http "wazero-wasip2/internal/http"
 	witgo "wazero-wasip2/wit-go"
 )
 
 type incomingRequestImpl struct {
-	hm *http.HTTPManager
+	hm *manager_http.HTTPManager
 }
 
-func newIncomingRequestImpl(hm *http.HTTPManager) *incomingRequestImpl {
+func newIncomingRequestImpl(hm *manager_http.HTTPManager) *incomingRequestImpl {
 	return &incomingRequestImpl{hm: hm}
 }
 

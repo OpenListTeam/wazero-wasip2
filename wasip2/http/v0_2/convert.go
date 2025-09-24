@@ -1,8 +1,12 @@
 package v0_2
 
 import (
+	"errors"
+	"net"
 	"net/http"
+	"os"
 	"strings"
+	"syscall"
 	witgo "wazero-wasip2/wit-go"
 )
 
@@ -87,4 +91,53 @@ func toWasiScheme(scheme string) Scheme {
 	default:
 		return Scheme{Other: &scheme}
 	}
+}
+
+// mapGoErrToWasiHttpErr 将 Go 的 net/http 和 net 错误映射到 wasi:http 的 ErrorCode。
+func mapGoErrToWasiHttpErr(err error) ErrorCode {
+	if err == nil {
+		return ErrorCode{} // Should not happen for an actual error
+	}
+
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		if dnsErr.IsTimeout {
+			return ErrorCode{DNSTimeout: &witgo.Unit{}}
+		}
+		if dnsErr.IsNotFound {
+			// This could be a more specific DNS error, but DestinationNotFound is a safe bet.
+			return ErrorCode{DestinationNotFound: &witgo.Unit{}}
+		}
+		return ErrorCode{DNSError: &DNSErrorPayload{
+			Rcode:    witgo.Some(dnsErr.Err),
+			InfoCode: witgo.None[uint16](),
+		}}
+	}
+
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		if opErr.Timeout() {
+			return ErrorCode{ConnectionTimeout: &witgo.Unit{}}
+		}
+		// Further inspect the wrapped error
+		return mapGoErrToWasiHttpErr(opErr.Err)
+	}
+
+	var syscallErr *os.SyscallError
+	if errors.As(err, &syscallErr) {
+		// ETIMEDOUT is a common error for timeouts
+		if errors.Is(syscallErr.Err, syscall.ETIMEDOUT) {
+			return ErrorCode{ConnectionTimeout: &witgo.Unit{}}
+		}
+		if errors.Is(syscallErr.Err, syscall.ECONNREFUSED) {
+			return ErrorCode{ConnectionRefused: &witgo.Unit{}}
+		}
+		if errors.Is(syscallErr.Err, syscall.ECONNRESET) {
+			return ErrorCode{ConnectionTerminated: &witgo.Unit{}}
+		}
+	}
+
+	// Fallback for generic errors
+	errMsg := err.Error()
+	return ErrorCode{InternalError: witgo.SomePtr(errMsg)}
 }

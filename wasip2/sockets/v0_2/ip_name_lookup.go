@@ -83,19 +83,12 @@ func (i *ipNameLookupImpl) ResolveNextAddress(_ context.Context, this ResolveAdd
 func (i *ipNameLookupImpl) Subscribe(_ context.Context, this ResolveAddressStream) wasip2_io.Pollable {
 	state, ok := i.host.ResolveAddressStreamManager().Get(this)
 	if !ok {
-		p := manager_io.NewPollable(nil)
-		p.SetReady()
-		return i.host.PollManager().Add(p)
+		return i.host.PollManager().Add(manager_io.ReadyPollable)
 	}
 
-	p := manager_io.NewPollable(nil) // 创建一个新的 pollable
+	p := manager_io.NewPollableByChan(state.Done, nil)
+
+	// p := manager_io.NewPollable(nil) // 创建一个新的 pollable
 	handle := i.host.PollManager().Add(p)
-
-	// 启动一个 goroutine 等待解析完成，然后关闭 pollable 的 channel
-	go func() {
-		<-state.Done
-		p.SetReady()
-	}()
-
 	return handle
 }
