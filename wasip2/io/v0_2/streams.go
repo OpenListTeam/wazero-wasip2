@@ -4,8 +4,9 @@ import (
 	"context"
 	"io"
 	"time"
-	manager_io "wazero-wasip2/internal/io"
-	witgo "wazero-wasip2/wit-go"
+
+	manager_io "github.com/foxxorcat/wazero-wasip2/manager/io"
+	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
 )
 
 type streamsImpl struct {
@@ -220,7 +221,7 @@ func (i *streamsImpl) BlockingWriteAndFlush(ctx context.Context, this OutputStre
 	}
 
 	writeSize := uint64(4096)
-	for contents != nil {
+	for len(contents) > 0 {
 		if s.CheckWriter != nil {
 			writeSize = s.CheckWriter.CheckWrite()
 		}
@@ -240,7 +241,7 @@ func (i *streamsImpl) BlockingWriteAndFlush(ctx context.Context, this OutputStre
 			errHandle := i.em.Add(err)
 			return witgo.Err[witgo.Unit, StreamError](StreamError{LastOperationFailed: &errHandle})
 		}
-		contents = contents[:n]
+		contents = contents[n:]
 	}
 	return i.BlockingFlush(ctx, this)
 }

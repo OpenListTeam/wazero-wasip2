@@ -46,6 +46,18 @@ func (m *ResourceManager[T]) Remove(handle uint32) {
 	delete(m.handles, handle)
 }
 
+// Pop retrieves and removes the resource via its handle in a single atomic operation.
+// This is useful for resources that are consumed immediately after retrieval.
+func (m *ResourceManager[T]) Pop(handle uint32) (T, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	res, ok := m.handles[handle]
+	if ok {
+		delete(m.handles, handle)
+	}
+	return res, ok
+}
+
 // Range iterates over the resources in the manager.
 // It calls the given function for each handle and resource. If the function
 // returns false, the iteration stops.

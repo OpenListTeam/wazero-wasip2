@@ -9,13 +9,13 @@ import (
 	"github.com/tetratelabs/wazero/api"
 )
 
-// Lower reads data from a pointer in guest memory into a Go value.
-func Lower(ctx context.Context, mem api.Memory, ptr uint32, goVal reflect.Value) error {
-	layout, err := GetOrCalculateLayout(goVal.Type())
+// Lower reads data from a pointer in guest memory into a Go value using a cached codec.
+func Lower(ctx context.Context, h *Host, ptr uint32, goVal reflect.Value) error {
+	l, err := getOrGenerateLowerer(goVal.Type())
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get lowerer for type %v: %w", goVal.Type(), err)
 	}
-	return read(ctx, mem, ptr, goVal, layout)
+	return l.lower(ctx, h, ptr, goVal)
 }
 
 // LowerStringFromParts reads a string from guest memory given a direct pointer and length.
@@ -36,6 +36,7 @@ func LowerSliceFromParts(mem api.Memory, ptr, length uint32) ([]byte, error) {
 	return content, nil
 }
 
+// read is now an internal helper used by codecs.
 func read(ctx context.Context, mem api.Memory, ptr uint32, val reflect.Value, layout *TypeLayout) error {
 	typ := val.Type()
 
@@ -76,6 +77,10 @@ func read(ctx context.Context, mem api.Memory, ptr uint32, val reflect.Value, la
 	} else if isFlags(typ) {
 		var bits uint64
 		var ok bool
+		layout, err := GetOrCalculateLayout(typ)
+		if err != nil {
+			return err
+		}
 		switch layout.Size {
 		case 1:
 			var b byte
@@ -211,7 +216,6 @@ func lowerString(mem api.Memory, ptr uint32) (string, error) {
 	return LowerStringFromParts(mem, contentPtr, contentLen)
 }
 
-// lowerSlice is now generic for any element type.
 func lowerSlice(ctx context.Context, mem api.Memory, ptr uint32, val reflect.Value) error {
 	buf, ok := mem.Read(ptr, 8)
 	if !ok {
@@ -228,13 +232,10 @@ func lowerSlice(ctx context.Context, mem api.Memory, ptr uint32, val reflect.Val
 
 	newSlice := reflect.MakeSlice(val.Type(), int(contentLen), int(contentLen))
 
-	// Stride is the size of each element "slot" in the array, including padding.
 	stride := align(elemLayout.Size, elemLayout.Alignment)
 
-	// Read each element recursively from the correct stride-based offset.
 	for i := 0; i < int(contentLen); i++ {
 		elemVal := newSlice.Index(i)
-		// Calculate the precise starting pointer for the current element.
 		elemPtr := contentPtr + (uint32(i) * stride)
 
 		if err := read(ctx, mem, elemPtr, elemVal, elemLayout); err != nil {

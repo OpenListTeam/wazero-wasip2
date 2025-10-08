@@ -7,7 +7,8 @@ import (
 	"os"
 	"strings"
 	"syscall"
-	witgo "wazero-wasip2/wit-go"
+
+	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
 )
 
 // fromWasiMethod 将 WIT 的 Method variant 转换为 Go 的 HTTP 方法字符串。

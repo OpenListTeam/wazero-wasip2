@@ -9,35 +9,29 @@ import (
 	"github.com/tetratelabs/wazero/api"
 )
 
-// Lift writes a Go value into guest memory according to its layout and returns the pointer.
-func Lift(ctx context.Context, mem api.Memory, alloc *GuestAllocator, val reflect.Value) (uint32, error) {
+// Lift writes a Go value into guest memory using a cached codec and returns the pointer.
+func Lift(ctx context.Context, h *Host, val reflect.Value) (uint32, error) {
 	layout, err := GetOrCalculateLayout(val.Type())
 	if err != nil {
 		return 0, err
 	}
-
-	ptr, err := alloc.Allocate(ctx, layout.Size, layout.Alignment)
+	l, err := getOrGenerateLifter(val.Type())
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to get lifter for type %v: %w", val.Type(), err)
 	}
-
-	if err := write(ctx, mem, alloc, val, ptr, layout); err != nil {
-		return 0, err
-	}
-	return ptr, nil
+	return l.lift(ctx, h, val, layout)
 }
 
 // LiftToPtr writes a Go value into a pre-allocated pointer in guest memory.
-// This is used for host exports that return complex types.
 func LiftToPtr(ctx context.Context, mem api.Memory, alloc *GuestAllocator, val reflect.Value, ptr uint32) error {
 	layout, err := GetOrCalculateLayout(val.Type())
 	if err != nil {
 		return err
 	}
-	// We don't allocate a new pointer; we write directly into the one provided.
 	return write(ctx, mem, alloc, val, ptr, layout)
 }
 
+// write is now an internal helper used by codecs.
 func write(ctx context.Context, mem api.Memory, alloc *GuestAllocator, val reflect.Value, ptr uint32, layout *TypeLayout) error {
 	typ := val.Type()
 
@@ -182,7 +176,6 @@ func liftString(ctx context.Context, mem api.Memory, alloc *GuestAllocator, s st
 	return nil
 }
 
-// liftSlice is now generic for any element type.
 func liftSlice(ctx context.Context, mem api.Memory, alloc *GuestAllocator, val reflect.Value, ptr uint32) error {
 	elemLayout, err := GetOrCalculateLayout(val.Type().Elem())
 	if err != nil {
@@ -190,12 +183,10 @@ func liftSlice(ctx context.Context, mem api.Memory, alloc *GuestAllocator, val r
 	}
 	sliceLen := val.Len()
 
-	// Stride is the size of each element "slot" in the array, including padding.
 	stride := align(elemLayout.Size, elemLayout.Alignment)
 
 	var contentSize uint32
 	if sliceLen > 0 {
-		// The total size is the start of the last element plus its own size.
 		contentSize = (uint32(sliceLen-1) * stride) + elemLayout.Size
 	}
 
@@ -204,10 +195,8 @@ func liftSlice(ctx context.Context, mem api.Memory, alloc *GuestAllocator, val r
 		return err
 	}
 
-	// Write each element recursively at the correct stride-based offset.
 	for i := 0; i < sliceLen; i++ {
 		elemVal := val.Index(i)
-		// Calculate the precise starting pointer for the current element.
 		elemPtr := contentPtr + (uint32(i) * stride)
 
 		if err := write(ctx, mem, alloc, elemVal, elemPtr, elemLayout); err != nil {
@@ -215,7 +204,6 @@ func liftSlice(ctx context.Context, mem api.Memory, alloc *GuestAllocator, val r
 		}
 	}
 
-	// Write the {ptr, len} header.
 	buf := make([]byte, 8)
 	binary.LittleEndian.PutUint32(buf[0:4], contentPtr)
 	binary.LittleEndian.PutUint32(buf[4:8], uint32(sliceLen))

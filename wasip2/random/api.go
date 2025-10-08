@@ -1,8 +1,8 @@
 package wasi_random
 
 import (
-	"wazero-wasip2/wasip2"
-	v0_2 "wazero-wasip2/wasip2/random/v0_2"
+	"github.com/foxxorcat/wazero-wasip2/wasip2"
+	v0_2 "github.com/foxxorcat/wazero-wasip2/wasip2/random/v0_2"
 )
 
 // Module 返回一个配置好的 wasi:random 模块选项。

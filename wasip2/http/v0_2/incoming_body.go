@@ -2,8 +2,9 @@ package v0_2
 
 import (
 	"context"
-	manager_http "wazero-wasip2/internal/http"
-	witgo "wazero-wasip2/wit-go"
+
+	manager_http "github.com/foxxorcat/wazero-wasip2/manager/http"
+	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
 )
 
 type incomingBodyImpl struct {

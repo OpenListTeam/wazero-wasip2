@@ -3,7 +3,8 @@ package filesystem
 import (
 	"io/fs"
 	"os"
-	witgo "wazero-wasip2/wit-go"
+
+	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
 )
 
 // Descriptor represents a file or directory descriptor.

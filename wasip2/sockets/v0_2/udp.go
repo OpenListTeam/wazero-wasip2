@@ -2,12 +2,13 @@ package v0_2
 
 import (
 	"context"
-	manager_io "wazero-wasip2/internal/io"
-	manager_sockets "wazero-wasip2/internal/sockets"
 
-	"wazero-wasip2/wasip2"
-	wasip2_io "wazero-wasip2/wasip2/io/v0_2"
-	witgo "wazero-wasip2/wit-go"
+	manager_io "github.com/foxxorcat/wazero-wasip2/manager/io"
+	manager_sockets "github.com/foxxorcat/wazero-wasip2/manager/sockets"
+
+	"github.com/foxxorcat/wazero-wasip2/wasip2"
+	wasip2_io "github.com/foxxorcat/wazero-wasip2/wasip2/io/v0_2"
+	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
 )
 
 type udpImpl struct {

@@ -3,7 +3,8 @@ package v0_2
 import (
 	"context"
 	"time"
-	"wazero-wasip2/internal/io"
+
+	"github.com/foxxorcat/wazero-wasip2/manager/io"
 )
 
 // Monotonic clock zero value, initialized at package load time.

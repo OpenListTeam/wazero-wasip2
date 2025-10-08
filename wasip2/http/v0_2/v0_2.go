@@ -2,9 +2,10 @@ package v0_2
 
 import (
 	"context"
-	manager_http "wazero-wasip2/internal/http"
-	"wazero-wasip2/wasip2"
-	witgo "wazero-wasip2/wit-go"
+
+	manager_http "github.com/foxxorcat/wazero-wasip2/manager/http"
+	"github.com/foxxorcat/wazero-wasip2/wasip2"
+	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
 
 	"github.com/tetratelabs/wazero"
 )
@@ -19,8 +20,10 @@ func NewTypes(hm *manager_http.HTTPManager) wasip2.Implementation {
 	return &httpTypes{hm: hm}
 }
 
-func (i *httpTypes) Name() string       { return "wasi:http/types" }
-func (i *httpTypes) Versions() []string { return []string{"0.2.0", "0.2.1", "0.2.2"} }
+func (i *httpTypes) Name() string { return "wasi:http/types" }
+func (i *httpTypes) Versions() []string {
+	return []string{"0.2", "0.2.0", "0.2.1", "0.2.2", "0.2.3", "0.2.4", "0.2.5", "0.2.6", "0.2.7"}
+}
 
 func (i *httpTypes) Instantiate(_ context.Context, h *wasip2.Host, builder wazero.HostModuleBuilder) error {
 	exporter := witgo.NewExporter(builder)
@@ -162,8 +165,10 @@ func NewOutgoingHandler(hm *manager_http.HTTPManager) wasip2.Implementation {
 	return &outgoingHandler{hm: hm}
 }
 
-func (i *outgoingHandler) Name() string       { return "wasi:http/outgoing-handler" }
-func (i *outgoingHandler) Versions() []string { return []string{"0.2.0", "0.2.1", "0.2.2"} }
+func (i *outgoingHandler) Name() string { return "wasi:http/outgoing-handler" }
+func (i *outgoingHandler) Versions() []string {
+	return []string{"0.2", "0.2.0", "0.2.1", "0.2.2", "0.2.3", "0.2.4", "0.2.5", "0.2.6", "0.2.7"}
+}
 
 func (i *outgoingHandler) Instantiate(_ context.Context, h *wasip2.Host, builder wazero.HostModuleBuilder) error {
 	handler := newOutgoingHandlerImpl(h.HTTPManager())

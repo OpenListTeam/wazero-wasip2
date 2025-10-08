@@ -2,11 +2,12 @@ package wasip2
 
 import (
 	"context"
-	"wazero-wasip2/internal/filesystem"
-	"wazero-wasip2/internal/http"
-	"wazero-wasip2/internal/io"
-	"wazero-wasip2/internal/sockets"
-	"wazero-wasip2/internal/tls"
+
+	"github.com/foxxorcat/wazero-wasip2/manager/filesystem"
+	"github.com/foxxorcat/wazero-wasip2/manager/http"
+	"github.com/foxxorcat/wazero-wasip2/manager/io"
+	"github.com/foxxorcat/wazero-wasip2/manager/sockets"
+	"github.com/foxxorcat/wazero-wasip2/manager/tls"
 
 	"github.com/tetratelabs/wazero"
 )

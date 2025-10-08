@@ -8,7 +8,8 @@ import (
 	"io/fs"
 	"os"
 	"time"
-	witgo "wazero-wasip2/wit-go"
+
+	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
 )
 
 func (i *typesImpl) GetFlags(ctx context.Context, this Descriptor) witgo.Result[DescriptorFlags, ErrorCode] {

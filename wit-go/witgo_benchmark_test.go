@@ -114,7 +114,7 @@ func BenchmarkComplexRecord(b *testing.B) {
 
 		for i := 0; i < b.N; i++ {
 			// Lower the data from the same pointer repeatedly.
-			err := Lower(ctx, mod.Memory(), ptr, reflect.ValueOf(&result).Elem())
+			err := Lower(ctx, host, ptr, reflect.ValueOf(&result).Elem())
 			if err != nil {
 				b.Fatalf("lower benchmark failed: %v", err)
 			}

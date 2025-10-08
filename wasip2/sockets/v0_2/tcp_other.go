@@ -5,8 +5,9 @@ package v0_2
 import (
 	"context"
 	"net"
-	"wazero-wasip2/internal/sockets"
-	witgo "wazero-wasip2/wit-go"
+
+	"github.com/foxxorcat/wazero-wasip2/manager/sockets"
+	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
 )
 
 func (i *tcpImpl) DropTCPSocket(_ context.Context, handle TCPSocket) {

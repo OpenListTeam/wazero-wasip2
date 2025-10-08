@@ -1,6 +1,6 @@
 package io
 
-import witgo "wazero-wasip2/wit-go"
+import witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
 
 type ErrorManager = witgo.ResourceManager[error]
 

@@ -3,8 +3,9 @@ package v0_2
 import (
 	gohttp "net/http"
 	"strconv"
-	manager_http "wazero-wasip2/internal/http"
-	witgo "wazero-wasip2/wit-go"
+
+	manager_http "github.com/foxxorcat/wazero-wasip2/manager/http"
+	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
 )
 
 type outgoingResponseImpl struct {

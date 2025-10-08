@@ -8,10 +8,11 @@ import (
 	"path/filepath"
 	"syscall"
 	"time"
-	"wazero-wasip2/internal/filesystem"
-	manager_io "wazero-wasip2/internal/io"
-	"wazero-wasip2/wasip2"
-	witgo "wazero-wasip2/wit-go"
+
+	"github.com/foxxorcat/wazero-wasip2/manager/filesystem"
+	manager_io "github.com/foxxorcat/wazero-wasip2/manager/io"
+	"github.com/foxxorcat/wazero-wasip2/wasip2"
+	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
 )
 
 type typesImpl struct {

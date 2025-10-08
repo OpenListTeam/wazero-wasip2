@@ -7,11 +7,13 @@ import (
 	"io"
 	"net"
 	gohttp "net/http"
+	"net/url"
 	"strings"
 	"time"
-	manager_http "wazero-wasip2/internal/http"
-	manager_io "wazero-wasip2/internal/io"
-	witgo "wazero-wasip2/wit-go"
+
+	manager_http "github.com/foxxorcat/wazero-wasip2/manager/http"
+	manager_io "github.com/foxxorcat/wazero-wasip2/manager/io"
+	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
 
 	lru "github.com/hashicorp/golang-lru/v2"
 )
@@ -34,8 +36,9 @@ func newOutgoingHandlerImpl(hm *manager_http.HTTPManager) *outgoingHandlerImpl {
 }
 
 func (i *outgoingHandlerImpl) getClient(options witgo.Option[RequestOptions]) *gohttp.Client {
+	// 1. 确定超时配置。如果无特定选项，则使用零值配置。
+	var cfg timeoutConfig
 	if options.Some != nil {
-		var cfg timeoutConfig
 		if opts, ok := i.hm.Options.Get(*options.Some); ok {
 			if opts.ConnectTimeout != nil {
 				cfg.connect = time.Duration(*opts.ConnectTimeout)
@@ -46,29 +49,43 @@ func (i *outgoingHandlerImpl) getClient(options witgo.Option[RequestOptions]) *g
 			if opts.BetweenBytesTimeout != nil {
 				cfg.betweenBytes = time.Duration(*opts.BetweenBytesTimeout)
 			}
-
-			if client, ok := i.clientCache.Get(cfg); ok {
-				return client
-			}
-
-			// 创建新的 Transport 和 Client
-			transport := gohttp.DefaultTransport.(*gohttp.Transport).Clone()
-			transport.DialContext = (&net.Dialer{
-				Timeout:   cfg.connect,
-				KeepAlive: 30 * time.Second,
-			}).DialContext
-			transport.ResponseHeaderTimeout = cfg.firstByte
-
-			client := &gohttp.Client{
-				Transport: transport,
-				Timeout:   cfg.betweenBytes,
-			}
-
-			i.clientCache.Add(cfg, client)
-			return client
 		}
 	}
-	return gohttp.DefaultClient
+
+	// 2. 使用配置作为键，检查缓存。
+	//    零值的 cfg 将作为我们自定义的 "默认客户端" 的键。
+	if client, ok := i.clientCache.Get(cfg); ok {
+		return client
+	}
+
+	// 3. 如果缓存未命中，则创建一个新的客户端。
+	//    这块逻辑现在同时服务于自定义客户端和默认客户端。
+	transport := gohttp.DefaultTransport.(*gohttp.Transport).Clone()
+
+	// 保留原始代码中的代理和 TLS 设置
+	p, _ := url.Parse("http://192.168.3.121:8888")
+	transport.Proxy = gohttp.ProxyURL(p)
+	transport.TLSClientConfig.InsecureSkipVerify = true
+
+	// 根据配置设置超时（如果cfg为零值，则超时为0，表示不设限制）
+	transport.DialContext = (&net.Dialer{
+		Timeout:   cfg.connect,
+		KeepAlive: 30 * time.Second,
+	}).DialContext
+	transport.ResponseHeaderTimeout = cfg.firstByte
+
+	client := &gohttp.Client{
+		Transport: transport,
+		Timeout:   cfg.betweenBytes, // 整个请求的超时，包括读取响应体
+		Jar:       nil,
+		CheckRedirect: func(req *gohttp.Request, via []*gohttp.Request) error {
+			return gohttp.ErrUseLastResponse
+		},
+	}
+
+	// 4. 将新创建的客户端存入缓存并返回
+	i.clientCache.Add(cfg, client)
+	return client
 }
 
 // Handle 实现了 outgoing-handler.handle 接口。

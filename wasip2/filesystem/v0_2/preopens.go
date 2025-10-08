@@ -2,8 +2,9 @@ package v0_2
 
 import (
 	"context"
-	"wazero-wasip2/internal/filesystem"
-	witgo "wazero-wasip2/wit-go"
+
+	"github.com/foxxorcat/wazero-wasip2/manager/filesystem"
+	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
 )
 
 type preopensImpl struct {

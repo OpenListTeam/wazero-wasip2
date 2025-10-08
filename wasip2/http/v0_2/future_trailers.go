@@ -2,9 +2,10 @@ package v0_2
 
 import (
 	"context"
-	manager_http "wazero-wasip2/internal/http"
-	manager_io "wazero-wasip2/internal/io"
-	witgo "wazero-wasip2/wit-go"
+
+	manager_http "github.com/foxxorcat/wazero-wasip2/manager/http"
+	manager_io "github.com/foxxorcat/wazero-wasip2/manager/io"
+	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
 )
 
 type futureTrailersImpl struct {

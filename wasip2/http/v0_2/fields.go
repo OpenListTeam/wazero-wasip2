@@ -4,8 +4,9 @@ import (
 	"context"
 	"sort"
 	"strings"
-	manager_http "wazero-wasip2/internal/http"
-	witgo "wazero-wasip2/wit-go"
+
+	manager_http "github.com/foxxorcat/wazero-wasip2/manager/http"
+	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
 )
 
 // fieldsImpl 封装了 fields 资源的所有操作。

@@ -2,8 +2,9 @@ package v0_2
 
 import (
 	"context"
-	manager_http "wazero-wasip2/internal/http"
-	"wazero-wasip2/wasip2"
+
+	manager_http "github.com/foxxorcat/wazero-wasip2/manager/http"
+	"github.com/foxxorcat/wazero-wasip2/wasip2"
 
 	"github.com/tetratelabs/wazero"
 )

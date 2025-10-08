@@ -3,7 +3,8 @@ package v0_2
 import (
 	"context"
 	"reflect"
-	"wazero-wasip2/internal/io"
+
+	"github.com/foxxorcat/wazero-wasip2/manager/io"
 )
 
 // pollImpl 结构体持有 wasi:io/poll 的具体实现逻辑。
@@ -60,7 +61,7 @@ func (i *pollImpl) Poll(_ context.Context, handles []Pollable) []uint32 {
 	// 2. 构造 select cases 并阻塞
 	cases := make([]reflect.SelectCase, len(handles))
 	for j, handle := range handles {
-		ch := make(chan struct{}) // 默认创建一个永不就绪的 channel
+		var ch <-chan struct{} = make(chan struct{}) // 默认创建一个永不就绪的 channel
 		if p, ok := i.pm.Get(handle); ok {
 			ch = p.Channel()
 		}

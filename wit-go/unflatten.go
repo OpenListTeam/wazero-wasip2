@@ -115,7 +115,7 @@ func (h *Host) unflattenSlice(ctx context.Context, mem api.Memory, ps *paramStre
 		return reflect.Value{}, fmt.Errorf("failed to write temp slice len")
 	}
 
-	err = Lower(ctx, mem, tempPtr, outVal)
+	err = Lower(ctx, h, tempPtr, outVal)
 	return outVal, err
 }
 

@@ -6,16 +6,17 @@ import (
 	"os"
 	"testing"
 	"time"
-	"wazero-wasip2/wasip2"
 
-	manager_io "wazero-wasip2/internal/io"
-	wasi_clocks "wazero-wasip2/wasip2/clocks"
-	wasi_filesystem "wazero-wasip2/wasip2/filesystem"
-	wasi_io "wazero-wasip2/wasip2/io"
-	wasi_random "wazero-wasip2/wasip2/random"
-	wasi_sockets "wazero-wasip2/wasip2/sockets"
+	"github.com/foxxorcat/wazero-wasip2/wasip2"
 
-	witgo "wazero-wasip2/wit-go"
+	manager_io "github.com/foxxorcat/wazero-wasip2/manager/io"
+	wasi_clocks "github.com/foxxorcat/wazero-wasip2/wasip2/clocks"
+	wasi_filesystem "github.com/foxxorcat/wazero-wasip2/wasip2/filesystem"
+	wasi_io "github.com/foxxorcat/wazero-wasip2/wasip2/io"
+	wasi_random "github.com/foxxorcat/wazero-wasip2/wasip2/random"
+	wasi_sockets "github.com/foxxorcat/wazero-wasip2/wasip2/sockets"
+
+	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
 
 	"github.com/stretchr/testify/require"
 	"github.com/tetratelabs/wazero"

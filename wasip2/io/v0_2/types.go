@@ -1,7 +1,7 @@
 package v0_2
 
 import (
-	witgo "wazero-wasip2/wit-go"
+	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
 )
 
 // --- wasi:io/error types ---

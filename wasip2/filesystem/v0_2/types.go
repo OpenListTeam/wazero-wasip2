@@ -1,9 +1,9 @@
 package v0_2
 
 import (
-	clocks_v0_2 "wazero-wasip2/wasip2/clocks/v0_2"
-	io_v0_2 "wazero-wasip2/wasip2/io/v0_2"
-	witgo "wazero-wasip2/wit-go"
+	clocks_v0_2 "github.com/foxxorcat/wazero-wasip2/wasip2/clocks/v0_2"
+	io_v0_2 "github.com/foxxorcat/wazero-wasip2/wasip2/io/v0_2"
+	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
 )
 
 // --- Imported Types ---

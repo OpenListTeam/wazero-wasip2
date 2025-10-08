@@ -2,8 +2,9 @@ package v0_2
 
 import (
 	"context"
-	"wazero-wasip2/wasip2"
-	witgo "wazero-wasip2/wit-go"
+
+	"github.com/foxxorcat/wazero-wasip2/wasip2"
+	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
 
 	"github.com/tetratelabs/wazero"
 )

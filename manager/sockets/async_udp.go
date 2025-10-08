@@ -6,7 +6,8 @@ import (
 	"io"
 	"net"
 	"sync"
-	manager_io "wazero-wasip2/internal/io"
+
+	manager_io "github.com/foxxorcat/wazero-wasip2/manager/io"
 )
 
 const defaultUDPBufferSize = 256 // 默认缓冲 256 个数据报

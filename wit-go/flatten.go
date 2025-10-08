@@ -84,7 +84,7 @@ func (h *Host) flattenSlice(ctx context.Context, val reflect.Value, flatParams *
 		*flatParams = append(*flatParams, 0, 0)
 		return nil
 	}
-	liftedStructPtr, err := Lift(ctx, h.module.Memory(), h.allocator, val)
+	liftedStructPtr, err := Lift(ctx, h, val)
 	if err != nil {
 		return fmt.Errorf("failed to lift slice for param: %w", err)
 	}

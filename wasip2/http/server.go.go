@@ -6,11 +6,12 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	manager_http "wazero-wasip2/internal/http"
-	manager_io "wazero-wasip2/internal/io"
-	"wazero-wasip2/wasip2"
-	v0_2 "wazero-wasip2/wasip2/http/v0_2"
-	witgo "wazero-wasip2/wit-go"
+
+	manager_http "github.com/foxxorcat/wazero-wasip2/manager/http"
+	manager_io "github.com/foxxorcat/wazero-wasip2/manager/io"
+	"github.com/foxxorcat/wazero-wasip2/wasip2"
+	v0_2 "github.com/foxxorcat/wazero-wasip2/wasip2/http/v0_2"
+	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
 
 	"github.com/tetratelabs/wazero/api"
 )

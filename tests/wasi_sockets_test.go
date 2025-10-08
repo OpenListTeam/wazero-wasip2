@@ -6,11 +6,12 @@ import (
 	"os"
 	"sync"
 	"testing"
-	"wazero-wasip2/wasip2"
-	wasi_clocks "wazero-wasip2/wasip2/clocks"
-	wasi_io "wazero-wasip2/wasip2/io"
-	wasi_sockets "wazero-wasip2/wasip2/sockets"
-	witgo "wazero-wasip2/wit-go"
+
+	"github.com/foxxorcat/wazero-wasip2/wasip2"
+	wasi_clocks "github.com/foxxorcat/wazero-wasip2/wasip2/clocks"
+	wasi_io "github.com/foxxorcat/wazero-wasip2/wasip2/io"
+	wasi_sockets "github.com/foxxorcat/wazero-wasip2/wasip2/sockets"
+	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
 
 	"github.com/stretchr/testify/require"
 	"github.com/tetratelabs/wazero"

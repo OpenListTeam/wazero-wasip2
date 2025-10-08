@@ -7,9 +7,10 @@ import (
 	"sync/atomic"
 )
 
-const defaultBufferSize = 8192 // 默认缓冲区大小为 8KB
+// 默认的读取缓冲区大小，用于后台读取操作。
+const defaultBufferSize = 8192
 
-// --- Asynchronous Reader ---
+// --- 优化后的异步读取封装器 ---
 
 // AsyncReadWrapperOption 是用于配置 AsyncReadWrapper 的函数类型。
 type AsyncReadWrapperOption func(*AsyncReadWrapper)
@@ -21,8 +22,8 @@ func DontCloseReader() AsyncReadWrapperOption {
 	}
 }
 
-// AsyncReadWrapper 将一个阻塞的 io.Reader 封装成一个非阻塞的 reader，
-// 并通过 IPollable 接口提供就绪状态通知。
+// AsyncReadWrapper 将一个阻塞的 io.Reader 封装成一个按需读取的非阻塞 reader。
+// 只有当内部缓冲区为空时，它才会从底层 reader 读取数据。
 type AsyncReadWrapper struct {
 	reader          io.Reader
 	buffer          *bytes.Buffer
@@ -31,110 +32,119 @@ type AsyncReadWrapper struct {
 	done            chan struct{}
 	err             error
 	once            sync.Once
-	closeUnderlying bool // 新增字段：是否关闭底层 reader
+	closeUnderlying bool
+
+	// trigger 用于通知后台 goroutine 执行一次读取操作。
+	// 使用带一个缓冲的 channel，可以避免在触发读取时发生不必要的阻塞。
+	trigger chan struct{}
 }
 
 // NewAsyncReadWrapper 创建并启动一个新的异步读取封装器。
-// 默认情况下，它会在 Close 时关闭底层的 reader（如果它实现了 io.Closer）。
-// 可以使用 DontCloseReader() 选项来改变这个行为。
 func NewAsyncReadWrapper(r io.Reader, opts ...AsyncReadWrapperOption) *AsyncReadWrapper {
 	wrapper := &AsyncReadWrapper{
 		reader:          r,
 		buffer:          &bytes.Buffer{},
 		ready:           NewPollable(nil),
 		done:            make(chan struct{}),
-		closeUnderlying: true, // 默认为 true
+		trigger:         make(chan struct{}, 1),
+		closeUnderlying: true, // 默认在 Close 时关闭底层 reader。
 	}
 	for _, opt := range opts {
 		opt(wrapper)
 	}
+	// 启动后台读取 goroutine。
 	go wrapper.run()
 	return wrapper
 }
 
-// run 在一个专用的后台 goroutine 中运行，它管理着另一个专门用于阻塞读取的 goroutine。
-// 这是处理潜在永久阻塞 I/O 的标准 Go 模式。
+// run 是在后台运行的 goroutine，它等待 trigger 信号来执行阻塞的读取操作。
 func (arw *AsyncReadWrapper) run() {
-	type readResult struct {
-		buf []byte
-		n   int
-		err error
-	}
-	results := make(chan readResult, 1)
-
-	// Goroutine #1: 专门负责执行阻塞的 Read 调用。
-	go func() {
-		defer close(results)
-		for {
-			buf := make([]byte, 4096)
-			n, err := arw.reader.Read(buf)
-			select {
-			case results <- readResult{buf: buf, n: n, err: err}:
-				if err != nil {
-					return // 发生错误，终止读取 goroutine
-				}
-			case <-arw.done:
-				return // 封装器被关闭，终止
-			}
-		}
-	}()
-
-	// Goroutine #0 (当前 run goroutine): 循环处理来自读取 goroutine 的结果。
+	// 复用读取缓冲区，避免在循环中重复分配内存。
+	readBuf := make([]byte, defaultBufferSize)
 	for {
 		select {
-		case res, ok := <-results:
-			if !ok {
-				// 读取 channel 已关闭，说明读取 goroutine 已退出。
-				return
-			}
+		case <-arw.done:
+			// 封装器被关闭，终止 goroutine。
+			return
+		case <-arw.trigger:
+			// 收到触发信号，执行一次阻塞读取。
+			n, readErr := arw.reader.Read(readBuf)
 
 			arw.mutex.Lock()
-			if res.err != nil {
-				arw.err = res.err
-				arw.ready.SetReady() // 发生错误，唤醒任何等待者
-				arw.mutex.Unlock()
-				return
+			wasEmpty := arw.buffer.Len() == 0
+			if n > 0 {
+				// 将读取到的数据写入内部缓冲区。
+				arw.buffer.Write(readBuf[:n])
 			}
-			if res.n > 0 {
-				wasEmpty := arw.buffer.Len() == 0
-				arw.buffer.Write(res.buf[:res.n])
-				if wasEmpty {
-					arw.ready.SetReady() // 缓冲区从空变为非空，通知等待者
+			if readErr != nil {
+				// 记录遇到的第一个错误（例如 io.EOF）。
+				if arw.err == nil {
+					arw.err = readErr
 				}
 			}
-			arw.mutex.Unlock()
 
-		case <-arw.done:
-			return // 封装器被关闭，终止
+			// 如果缓冲区从空变为非空，或者发生了错误，
+			// 就将 pollable 设置为就绪状态，以唤醒等待的消费者。
+			if (wasEmpty && arw.buffer.Len() > 0) || (readErr != nil) {
+				arw.ready.SetReady()
+			}
+			arw.mutex.Unlock()
 		}
+	}
+}
+
+// requestRead 尝试向后台 goroutine 发送一个读取请求。
+// 这是一个非阻塞操作；如果后台已经在处理一个读取请求，它会直接返回。
+func (arw *AsyncReadWrapper) requestRead() {
+	select {
+	case arw.trigger <- struct{}{}:
+	default: // 后台已在忙碌或已被触发，无需再次发送。
 	}
 }
 
 // Read 从内部缓冲区非阻塞地读取数据。
+// 如果缓冲区为空，它会返回 (0, nil) 并触发一次后台读取。
+// 调用者应该使用 subscribe() 来等待数据变为可用。
 func (arw *AsyncReadWrapper) Read(p []byte) (n int, err error) {
 	arw.mutex.Lock()
-	defer arw.mutex.Unlock()
 
+	// 1. 检查缓冲区是否有数据。
 	if arw.buffer.Len() > 0 {
 		n, _ = arw.buffer.Read(p)
-		if arw.buffer.Len() == 0 && arw.err == nil {
-			arw.ready.Reset() // 缓冲区已空且没有最终错误，重置 pollable
-		}
+
+		arw.mutex.Unlock()
 		return n, nil
 	}
 
-	// 如果缓冲区为空，但后台已报告错误（如 EOF），则返回该错误。
-	return 0, arw.err
+	// 2. 缓冲区为空，检查是否有已记录的错误（如 EOF）。
+	if arw.err != nil {
+		err = arw.err
+		arw.mutex.Unlock()
+		return 0, err
+	}
+
+	// 3. 缓冲区为空且无错误，触发一次后台读取。
+	arw.mutex.Unlock()
+	arw.requestRead()
+
+	return 0, nil
 }
 
-// subscribe 返回一个 pollable，它在有数据可读或发生错误时变为就绪。
+// subscribe 返回一个 pollable 对象，当有数据可读或发生错误时，该对象会变为就绪状态。
 func (arw *AsyncReadWrapper) subscribe() IPollable {
 	arw.mutex.Lock()
-	defer arw.mutex.Unlock()
-	// 立即检查当前状态，如果满足条件则立即设为就绪
+
+	// 如果数据已在缓冲区中或已发生错误，则立即返回一个就绪的 pollable。
 	if arw.buffer.Len() > 0 || arw.err != nil {
-		arw.ready.SetReady()
+		arw.mutex.Unlock()
+		return ReadyPollable
 	}
+
+	// 否则，重置 pollable 状态，并触发一次后台读取。
+	arw.ready.Reset()
+	arw.mutex.Unlock()
+	arw.requestRead()
+
 	return arw.ready
 }
 
@@ -142,8 +152,11 @@ func (arw *AsyncReadWrapper) subscribe() IPollable {
 func (arw *AsyncReadWrapper) Close() error {
 	arw.once.Do(func() {
 		close(arw.done)
+		arw.mutex.Lock()
+		defer arw.mutex.Unlock()
+		arw.ready.SetReady() // 唤醒任何可能在等待的 goroutine。
 	})
-	// 检查标志位，决定是否关闭底层 reader
+
 	if arw.closeUnderlying {
 		if c, ok := arw.reader.(io.Closer); ok {
 			return c.Close()
@@ -152,7 +165,7 @@ func (arw *AsyncReadWrapper) Close() error {
 	return nil
 }
 
-// NewAsyncStreamForReader 是一个便捷辅助函数，
+// NewAsyncStreamForReader 是一个便捷的辅助函数，
 // 将一个阻塞的 io.Reader 转换为完全支持异步 subscribe 的 *Stream。
 func NewAsyncStreamForReader(r io.Reader, opts ...AsyncReadWrapperOption) *Stream {
 	wrapper := NewAsyncReadWrapper(r, opts...)

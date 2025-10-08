@@ -7,7 +7,8 @@ import (
 	"net"
 	"os"
 	"syscall"
-	witgo "wazero-wasip2/wit-go"
+
+	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
 
 	"golang.org/x/sys/unix"
 )

@@ -7,7 +7,8 @@ import (
 	"os"
 	"syscall"
 	"time"
-	witgo "wazero-wasip2/wit-go"
+
+	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
 )
 
 func goFileInfoToDescriptorStat(info fs.FileInfo) DescriptorStat {

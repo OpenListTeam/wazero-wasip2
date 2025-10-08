@@ -1,7 +1,7 @@
 package v0_2
 
 import (
-	"wazero-wasip2/wasip2"
+	"github.com/foxxorcat/wazero-wasip2/wasip2"
 )
 
 type tcpCreateSocketImpl struct {

@@ -40,6 +40,19 @@ func calculateLayout(typ reflect.Type) (*TypeLayout, error) {
 	if isVariant(typ) {
 		return calculateSumLayout(typ, 0, getVariantCaseTypes(typ))
 	}
+	if isFlags(typ) {
+		numFlags := typ.NumField()
+		switch {
+		case numFlags <= 8:
+			return &TypeLayout{Size: 1, Alignment: 1}, nil
+		case numFlags <= 16:
+			return &TypeLayout{Size: 2, Alignment: 2}, nil
+		case numFlags <= 32:
+			return &TypeLayout{Size: 4, Alignment: 4}, nil
+		default: // Assumes up to 64 flags
+			return &TypeLayout{Size: 8, Alignment: 8}, nil
+		}
+	}
 
 	switch typ.Kind() {
 	case reflect.Uint8, reflect.Int8, reflect.Bool:

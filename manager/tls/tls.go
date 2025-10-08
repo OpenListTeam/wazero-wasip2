@@ -4,8 +4,9 @@ import (
 	"crypto/tls"
 	"sync"
 	"sync/atomic"
-	manager_io "wazero-wasip2/internal/io"
-	witgo "wazero-wasip2/wit-go"
+
+	manager_io "github.com/foxxorcat/wazero-wasip2/manager/io"
+	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
 )
 
 // ClientHandshake 代表一个客户端 TLS 握手操作。
