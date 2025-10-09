@@ -1,6 +1,7 @@
 package v0_2
 
 import (
+	"io"
 	gohttp "net/http"
 	"strconv"
 
@@ -17,16 +18,17 @@ func newOutgoingResponseImpl(hm *manager_http.HTTPManager) *outgoingResponseImpl
 }
 
 func (i *outgoingResponseImpl) Constructor(headers Headers) OutgoingResponse {
+	header, _ := i.hm.Fields.Pop(headers)
 	resp := &manager_http.OutgoingResponse{
 		StatusCode: gohttp.StatusOK,
-		Headers:    headers,
+		Headers:    header,
 	}
 
 	id := i.hm.OutgoingResponses.Add(resp)
 
 	var contentLength *uint64
 	if headerFields, ok := i.hm.Fields.Get(headers); ok {
-		if cl, ok := headerFields["content-length"]; ok && len(cl) > 0 {
+		if cl, ok := headerFields["Content-Length"]; ok && len(cl) > 0 {
 			if val, err := strconv.ParseUint(cl[0], 10, 64); err == nil {
 				contentLength = &val
 			}
@@ -42,12 +44,14 @@ func (i *outgoingResponseImpl) Constructor(headers Headers) OutgoingResponse {
 }
 
 func (i *outgoingResponseImpl) Drop(this OutgoingResponse) {
-	if resp, ok := i.hm.OutgoingResponses.Get(this); ok {
+	if resp, ok := i.hm.OutgoingResponses.Pop(this); ok {
 		if resp.BodyHandle != 0 {
-			i.hm.Bodies.Remove(resp.BodyHandle)
+			if body, ok := i.hm.Bodies.Pop(resp.BodyHandle); ok {
+				body.BodyWriter.CloseWithError(io.EOF)
+				i.hm.Streams.Remove(body.OutputStreamHandle)
+			}
 		}
 	}
-	i.hm.OutgoingResponses.Remove(this)
 }
 
 func (i *outgoingResponseImpl) StatusCode(this OutgoingResponse) StatusCode {
@@ -72,12 +76,15 @@ func (i *outgoingResponseImpl) Headers(this OutgoingResponse) Headers {
 	if !ok {
 		return 0
 	}
-	return resp.Headers
+	return i.hm.Fields.Add(manager_http.Fields(resp.Headers))
 }
 
 func (i *outgoingResponseImpl) Body(this OutgoingResponse) witgo.Result[OutgoingBody, witgo.Unit] {
 	resp, ok := i.hm.OutgoingResponses.Get(this)
 	if !ok {
+		return witgo.Err[OutgoingBody, witgo.Unit](witgo.Unit{})
+	}
+	if !resp.Consumed.CompareAndSwap(false, true) {
 		return witgo.Err[OutgoingBody, witgo.Unit](witgo.Unit{})
 	}
 	return witgo.Ok[OutgoingBody, witgo.Unit](resp.BodyHandle)

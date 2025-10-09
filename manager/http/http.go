@@ -12,7 +12,7 @@ import (
 )
 
 // Fields 代表 HTTP 头部或尾部。
-type Fields map[string][]string
+type Fields = http.Header
 
 // IncomingRequest 代表一个由 Host 接收的、传递给 Guest 的 HTTP 请求的内部表示。
 type IncomingRequest struct {
@@ -33,28 +33,40 @@ type OutgoingRequest struct {
 	Scheme    *string
 	Authority *string
 	Path      string
-	Headers   uint32 // 指向 Fields 资源的句柄
-	Body      io.Reader
+	Headers   Fields
+
+	Trailers Fields // 用于存储 Trailers
+	Body     io.Reader
 	// BodyWriter 用于在 Host 端写入 Guest 提供的数据
 	BodyWriter *io.PipeWriter
 	BodyHandle uint32 // 指向 outgoing-body 资源的句柄
+
+	// 消耗标记
+	Consumed atomic.Bool
 }
 
 // IncomingResponse 代表一个已到达的、由 Host 接收的 HTTP 响应。
 type IncomingResponse struct {
-	Response     *http.Response
-	Headers      uint32
-	BodyConsumed bool
-	BodyHandle   uint32 // 指向 incoming-body 的句柄
+	Response *http.Response
+	Headers  Fields
+
+	Body       *IncomingBody
+	BodyHandle uint32 // 指向 incoming-body 的句柄
+	// 消耗标记
+	Consumed atomic.Bool
 }
 
 // OutgoingResponse 代表一个由 Guest 构建的出站 HTTP 响应。
 type OutgoingResponse struct {
 	StatusCode int
-	Headers    uint32
+	Headers    Fields
+
 	Body       io.Reader
 	BodyWriter *io.PipeWriter
 	BodyHandle uint32
+
+	// 消耗标记
+	Consumed atomic.Bool
 }
 
 // ResponseOutparam 是一个一次性的句柄，用于让 Guest 设置对 IncomingRequest 的响应。
@@ -66,19 +78,28 @@ type ResponseOutparam struct {
 
 // IncomingBody 代表一个入站的 HTTP Body。
 type IncomingBody struct {
+	Stream       io.Reader
 	StreamHandle uint32 // 指向 input-stream 的句柄
-	StreamTaken  bool   // 标记 stream 是否已经被取出
-	Trailers     uint32 // 指向 future-trailers 的句柄
+
+	Trailers uint32 // 指向 future-trailers 的句柄
+
+	// 消耗标记
+	Consumed atomic.Bool
 }
 
 // OutgoingBody 代表一个出站的 HTTP Body。
 type OutgoingBody struct {
 	OutputStreamHandle uint32
 	BodyWriter         *io.PipeWriter
-	Request            uint32 // OutgoingRequest or OutgoingResponse
+
+	Request  uint32 // OutgoingRequest or OutgoingResponse
+	Response uint32 // OutgoingRequest or OutgoingResponse
 
 	ContentLength *uint64
 	BytesWritten  atomic.Uint64
+
+	// 消耗标记
+	Consumed atomic.Bool
 }
 
 // FutureTrailers 代表一个尚未到达的 HTTP Trailers。

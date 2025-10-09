@@ -8,7 +8,6 @@ import (
 	"net"
 	gohttp "net/http"
 	"net/url"
-	"strings"
 	"time"
 
 	manager_http "github.com/foxxorcat/wazero-wasip2/manager/http"
@@ -38,8 +37,8 @@ func newOutgoingHandlerImpl(hm *manager_http.HTTPManager) *outgoingHandlerImpl {
 func (i *outgoingHandlerImpl) getClient(options witgo.Option[RequestOptions]) *gohttp.Client {
 	// 1. 确定超时配置。如果无特定选项，则使用零值配置。
 	var cfg timeoutConfig
-	if options.Some != nil {
-		if opts, ok := i.hm.Options.Get(*options.Some); ok {
+	if options.IsSome() {
+		if opts, ok := i.hm.Options.Pop(*options.Some); ok {
 			if opts.ConnectTimeout != nil {
 				cfg.connect = time.Duration(*opts.ConnectTimeout)
 			}
@@ -90,13 +89,14 @@ func (i *outgoingHandlerImpl) getClient(options witgo.Option[RequestOptions]) *g
 
 // Handle 实现了 outgoing-handler.handle 接口。
 // 这是执行 HTTP 请求的核心。
+// 调用后会消耗掉request和options
 func (i *outgoingHandlerImpl) Handle(
 	_ context.Context,
 	request OutgoingRequest,
 	options witgo.Option[RequestOptions], // options 是可选的
 ) witgo.Result[FutureIncomingResponse, ErrorCode] {
 	// 1. 从管理器中获取我们之前构建的 OutgoingRequest 对象。
-	req, ok := i.hm.OutgoingRequests.Get(request)
+	req, ok := i.hm.OutgoingRequests.Pop(request)
 	if !ok {
 		// 如果请求句柄无效，返回错误。
 		return witgo.Err[FutureIncomingResponse, ErrorCode](ErrorCode{InternalError: witgo.SomePtr("invalid request handle")})
@@ -114,6 +114,8 @@ func (i *outgoingHandlerImpl) Handle(
 		ResultChan: make(chan manager_http.Result, 1), // 缓冲为 1，以防发送时没有接收者
 	}
 	futureHandle := i.hm.Futures.Add(future)
+	// 创建站位
+	goReq.Trailer = gohttp.Header{}
 
 	// 4. 启动一个新的 goroutine 来异步执行 HTTP 请求。
 	go i.executeRequest(i.getClient(options), goReq, future)
@@ -132,13 +134,6 @@ func (i *outgoingHandlerImpl) executeRequest(client *gohttp.Client, goReq *gohtt
 		}
 		return
 	}
-
-	// 1. 转换 Headers
-	respHeaders := make(manager_http.Fields)
-	for k, v := range resp.Header {
-		respHeaders[strings.ToLower(k)] = v
-	}
-	headersHandle := i.hm.Fields.Add(respHeaders)
 
 	// 2. 创建 FutureTrailers 资源
 	futureTrailers := &manager_http.FutureTrailers{
@@ -160,6 +155,7 @@ func (i *outgoingHandlerImpl) executeRequest(client *gohttp.Client, goReq *gohtt
 
 	// 4. 创建 IncomingBody，并链接 stream 和 future-trailers
 	body := &manager_http.IncomingBody{
+		Stream:       bodyReader,
 		StreamHandle: streamID,
 		Trailers:     futureTrailersID,
 	}
@@ -168,7 +164,8 @@ func (i *outgoingHandlerImpl) executeRequest(client *gohttp.Client, goReq *gohtt
 	// 5. 创建 IncomingResponse 资源, 并链接 body
 	incomingResponse := &manager_http.IncomingResponse{
 		Response:   resp,
-		Headers:    headersHandle,
+		Headers:    resp.Header,
+		Body:       body,
 		BodyHandle: bodyID,
 	}
 	responseHandle := i.hm.Responses.Add(incomingResponse)
@@ -197,15 +194,7 @@ func (i *outgoingHandlerImpl) buildGoRequest(req *manager_http.OutgoingRequest) 
 	if err != nil {
 		return nil, err
 	}
-
-	// 填充 Headers
-	headers, ok := i.hm.Fields.Get(req.Headers)
-	if !ok {
-		return nil, fmt.Errorf("invalid fields handle for request headers")
-	}
-	for k, v := range headers {
-		goReq.Header[gohttp.CanonicalHeaderKey(k)] = v
-	}
+	goReq.Header = req.Headers
 
 	return goReq, nil
 }

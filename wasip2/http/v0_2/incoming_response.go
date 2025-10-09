@@ -35,7 +35,7 @@ func (i *incomingResponseImpl) Headers(_ context.Context, this IncomingResponse)
 	if !ok {
 		return 0
 	}
-	return resp.Headers
+	return i.hm.Fields.Add(manager_http.Fields(resp.Headers))
 }
 
 // Consume 实现了 [method]incoming-response.consume。
@@ -45,16 +45,9 @@ func (i *incomingResponseImpl) Consume(_ context.Context, this IncomingResponse)
 	if !ok {
 		return witgo.Err[IncomingBody, witgo.Unit](witgo.Unit{})
 	}
-	if resp.BodyConsumed {
-		// body 已经被消费过一次，不能重复消费。
-		return witgo.Err[IncomingBody, witgo.Unit](witgo.Unit{})
+	if !resp.Consumed.CompareAndSwap(false, true) {
+		return witgo.Err[OutgoingBody, witgo.Unit](witgo.Unit{})
 	}
-	resp.BodyConsumed = true
-
-	// 创建一个 incoming-body 资源来包装 Go 的 manager_http.Response.Body
-	// body := &manager_http.IncomingBody{Body: resp.Response.Body}
-	// handle := i.hm.IncomingBodies.Add(body)
-	// resp.BodyHandle = handle
 
 	return witgo.Ok[IncomingBody, witgo.Unit](resp.BodyHandle)
 }

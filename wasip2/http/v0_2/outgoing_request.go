@@ -2,6 +2,7 @@ package v0_2
 
 import (
 	"context"
+	"io"
 	"strconv"
 
 	manager_http "github.com/foxxorcat/wazero-wasip2/manager/http"
@@ -17,18 +18,19 @@ func newOutgoingRequestImpl(hm *manager_http.HTTPManager) *outgoingRequestImpl {
 }
 
 func (i *outgoingRequestImpl) Constructor(fields Fields) OutgoingRequest {
+	header, _ := i.hm.Fields.Pop(fields)
 	req := &manager_http.OutgoingRequest{
-		Headers: fields,
+		Headers:  header,
+		Trailers: make(manager_http.Fields),
 	}
 
 	handle := i.hm.OutgoingRequests.Add(req)
 
 	var contentLength *uint64
-	if headerFields, ok := i.hm.Fields.Get(fields); ok {
-		if cl, ok := headerFields["content-length"]; ok && len(cl) > 0 {
-			if val, err := strconv.ParseUint(cl[0], 10, 64); err == nil {
-				contentLength = &val
-			}
+	// 直接在 header 对象上检查 Content-Length
+	if cl, ok := header["Content-Length"]; ok && len(cl) > 0 {
+		if val, err := strconv.ParseUint(cl[0], 10, 64); err == nil {
+			contentLength = &val
 		}
 	}
 
@@ -41,20 +43,24 @@ func (i *outgoingRequestImpl) Constructor(fields Fields) OutgoingRequest {
 }
 
 func (i *outgoingRequestImpl) Drop(_ context.Context, handle OutgoingRequest) {
-	if req, ok := i.hm.OutgoingRequests.Get(handle); ok {
+	if req, ok := i.hm.OutgoingRequests.Pop(handle); ok {
 		if req.BodyHandle != 0 {
-			i.hm.Bodies.Remove(req.BodyHandle)
+			if body, ok := i.hm.Bodies.Pop(req.BodyHandle); ok {
+				body.BodyWriter.CloseWithError(io.EOF)
+				i.hm.Streams.Remove(body.OutputStreamHandle)
+			}
 		}
 	}
-	i.hm.OutgoingRequests.Remove(handle)
 }
 
+// 返回当前请求对应的输出体（outgoing-body）资源。
+// 仅首次调用成功，最多获取一次；后续调用返回错误。
 func (i *outgoingRequestImpl) Body(_ context.Context, this OutgoingRequest) witgo.Result[OutgoingBody, witgo.Unit] {
 	req, ok := i.hm.OutgoingRequests.Get(this)
 	if !ok {
 		return witgo.Err[OutgoingBody, witgo.Unit](witgo.Unit{})
 	}
-	if req.BodyHandle == 0 {
+	if !req.Consumed.CompareAndSwap(false, true) {
 		return witgo.Err[OutgoingBody, witgo.Unit](witgo.Unit{})
 	}
 	return witgo.Ok[OutgoingBody, witgo.Unit](req.BodyHandle)
@@ -98,7 +104,7 @@ func (i *outgoingRequestImpl) Headers(_ context.Context, this OutgoingRequest) H
 	if !ok {
 		return 0
 	}
-	return req.Headers
+	return i.hm.Fields.Add(manager_http.Fields(req.Headers))
 }
 
 // --- Setters ---

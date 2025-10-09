@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"strings"
 
@@ -139,15 +140,7 @@ func (s *Server) writeOutgoingResponse(w http.ResponseWriter, respHandle v0_2.Ou
 	}
 	defer hm.OutgoingResponses.Remove(respHandle)
 
-	// 写入 Headers
-	headers, ok := hm.Fields.Get(resp.Headers)
-	if ok {
-		for k, v := range headers {
-			for _, val := range v {
-				w.Header().Add(k, val)
-			}
-		}
-	}
+	maps.Copy(w.Header(), resp.Headers)
 
 	// 写入 Status Code
 	w.WriteHeader(resp.StatusCode)
