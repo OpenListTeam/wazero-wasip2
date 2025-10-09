@@ -12,7 +12,10 @@ import (
 // unflattenParam is the inverse of flattenParam. It reconstructs a high-level Go value
 // by consuming one or more flat values from a stream.
 func (h *Host) unflattenParam(ctx context.Context, mem api.Memory, ps *paramStream, targetType reflect.Type) (reflect.Value, error) {
-	outVal := reflect.New(targetType).Elem() // Create a new value to populate.
+	outVal := reflect.New(targetType) // Create a new value to populate.
+	for outVal.Kind() == reflect.Pointer {
+		outVal = outVal.Elem()
+	}
 
 	if isVariant(targetType) {
 		return h.unflattenVariant(ctx, mem, ps, targetType)

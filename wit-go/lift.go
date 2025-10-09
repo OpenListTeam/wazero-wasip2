@@ -33,6 +33,10 @@ func LiftToPtr(ctx context.Context, mem api.Memory, alloc *GuestAllocator, val r
 
 // write is now an internal helper used by codecs.
 func write(ctx context.Context, mem api.Memory, alloc *GuestAllocator, val reflect.Value, ptr uint32, layout *TypeLayout) error {
+	for val.Kind() == reflect.Pointer {
+		val = val.Elem()
+	}
+
 	typ := val.Type()
 
 	if isVariant(typ) {

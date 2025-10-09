@@ -9,6 +9,9 @@ import (
 
 // flattenParam recursively deconstructs a Go value, appending the flat Wasm parameters to a slice.
 func (h *Host) flattenParam(ctx context.Context, val reflect.Value, flatParams *[]uint64) error {
+	for val.Kind() == reflect.Pointer {
+		val = val.Elem()
+	}
 	typ := val.Type()
 
 	if isVariant(typ) {

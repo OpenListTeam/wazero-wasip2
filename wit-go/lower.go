@@ -38,6 +38,10 @@ func LowerSliceFromParts(mem api.Memory, ptr, length uint32) ([]byte, error) {
 
 // read is now an internal helper used by codecs.
 func read(ctx context.Context, mem api.Memory, ptr uint32, val reflect.Value, layout *TypeLayout) error {
+	for val.Kind() == reflect.Pointer {
+		val = val.Elem()
+	}
+
 	typ := val.Type()
 
 	if isVariant(typ) {
