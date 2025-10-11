@@ -29,30 +29,13 @@ func (i *futureIncomingResponseImpl) Subscribe(_ context.Context, this FutureInc
 		return i.hm.Poll.Add(manager_io.ReadyPollable)
 	}
 
-	future.PollableOnce.Do(func() {
-		ctx, cancel := context.WithCancel(context.Background())
-		// 创建一个新的 pollable，而不是裸 channel
-		future.Pollable = manager_io.NewPollable(cancel)
-		go func() {
-			select {
-			case <-ctx.Done():
-				return
-			case res, ok := <-future.ResultChan:
-				if ok {
-					future.Result.Store(&res) // 原子性地存储结果
-				}
-				future.Pollable.SetReady() // 在就绪时调用 SetReady
-			}
-		}()
-	})
-
 	return i.hm.Poll.Add(future.Pollable)
 }
 
 // Get implements [method]future-incoming-response.get.
 // It returns the response at most once.
 func (i *futureIncomingResponseImpl) Get(
-	_ context.Context,
+	ctx context.Context,
 	this FutureIncomingResponse,
 ) witgo.Option[witgo.Result[witgo.Result[IncomingResponse, ErrorCode], witgo.Unit]] {
 	future, ok := i.hm.Futures.Get(this)
@@ -61,27 +44,26 @@ func (i *futureIncomingResponseImpl) Get(
 		return witgo.None[witgo.Result[witgo.Result[IncomingResponse, ErrorCode], witgo.Unit]]()
 	}
 
-	res := future.Result.Load() // Atomically load the result
-	if res == nil {
-		// Future is not ready yet.
+	select {
+	case <-future.Pollable.Channel():
+	case <-ctx.Done():
 		return witgo.None[witgo.Result[witgo.Result[IncomingResponse, ErrorCode], witgo.Unit]]()
 	}
 
-	// Try to consume the result.
 	if !future.Consumed.CompareAndSwap(false, true) {
 		// It was already consumed. Return Some(Err()).
 		outerResult := witgo.Err[witgo.Result[IncomingResponse, ErrorCode], witgo.Unit](witgo.Unit{})
 		return witgo.Some(outerResult)
 	}
 
-	// First time consuming.
 	var innerResult witgo.Result[IncomingResponse, ErrorCode]
-	if res.Err != nil {
-		// The HTTP request itself failed.
-		innerResult = witgo.Err[IncomingResponse, ErrorCode](ErrorCode{InternalError: witgo.SomePtr(res.Err.Error())})
+	if future.Result.Err != nil {
+		innerResult = witgo.Err[IncomingResponse, ErrorCode](mapGoErrToWasiHttpErr(future.Result.Err))
 	} else {
-		// The HTTP request succeeded.
-		innerResult = witgo.Ok[IncomingResponse, ErrorCode](res.ResponseHandle)
+		responseHandle := i.hm.Responses.Add(&manager_http.IncomingResponse{
+			Response: future.Result.Response,
+		})
+		innerResult = witgo.Ok[IncomingResponse, ErrorCode](responseHandle)
 	}
 
 	// Wrap the inner result in Ok() to signify a successful 'get' operation.

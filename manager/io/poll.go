@@ -127,5 +127,9 @@ type PollManager = witgo.ResourceManager[IPollable]
 
 // NewManager 创建一个新的 Poll 管理器。
 func NewPollManager() *PollManager {
-	return witgo.NewResourceManager[IPollable]()
+	return witgo.NewResourceManager[IPollable](func(resource IPollable) {
+		if resource.Close != nil {
+			resource.Close()
+		}
+	})
 }

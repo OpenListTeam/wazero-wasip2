@@ -27,52 +27,37 @@ func (i *futureTrailersImpl) Subscribe(this FutureTrailers) Pollable {
 		return i.hm.Poll.Add(manager_io.ReadyPollable)
 	}
 
-	future.PollableOnce.Do(func() {
-		ctx, cancel := context.WithCancel(context.Background())
-		future.Pollable = manager_io.NewPollable(cancel)
-		go func() {
-			select {
-			case <-ctx.Done():
-				return
-			case res, ok := <-future.ResultChan:
-				if ok {
-					future.Result.Store(&res) // 原子性地存储结果
-				}
-				future.Pollable.SetReady() // 在就绪时调用 SetReady
-			}
-		}()
-	})
 	return i.hm.Poll.Add(future.Pollable)
 }
 
-func (i *futureTrailersImpl) Get(this FutureTrailers) witgo.Option[witgo.Result[witgo.Result[witgo.Option[Trailers], ErrorCode], witgo.Unit]] {
-	f, ok := i.hm.FutureTrailers.Get(this)
+func (i *futureTrailersImpl) Get(ctx context.Context, this FutureTrailers) witgo.Option[witgo.Result[witgo.Result[witgo.Option[Trailers], ErrorCode], witgo.Unit]] {
+	future, ok := i.hm.FutureTrailers.Get(this)
 	if !ok {
 		return witgo.None[witgo.Result[witgo.Result[witgo.Option[Trailers], ErrorCode], witgo.Unit]]()
 	}
 
-	res := f.Result.Load()
-	if res == nil {
-		// Future 尚未就绪
+	select {
+	case <-future.Pollable.Channel():
+	case <-ctx.Done():
 		return witgo.None[witgo.Result[witgo.Result[witgo.Option[Trailers], ErrorCode], witgo.Unit]]()
 	}
 
-	if f.Consumed.Swap(true) {
-		// 资源已被消费，后续调用返回错误
-		return witgo.Some(witgo.Err[witgo.Result[witgo.Option[Trailers], ErrorCode], witgo.Unit](witgo.Unit{}))
+	if !future.Consumed.CompareAndSwap(false, true) {
+		// It was already consumed. Return Some(Err()).
+		return witgo.None[witgo.Result[witgo.Result[witgo.Option[Trailers], ErrorCode], witgo.Unit]]()
 	}
 
-	if res.Err != nil {
+	if future.Result.Err != nil {
 		// 读取 body 过程中发生错误
-		errorCode := ErrorCode{InternalError: witgo.SomePtr(res.Err.Error())}
+		errorCode := ErrorCode{InternalError: witgo.SomePtr(future.Result.Err.Error())}
 		return witgo.Some(witgo.Ok[witgo.Result[witgo.Option[Trailers], ErrorCode], witgo.Unit](
 			witgo.Err[witgo.Option[Trailers], ErrorCode](errorCode),
 		))
 	}
 
 	var trailers witgo.Option[Trailers]
-	if res.TrailersHandle != 0 {
-		trailers = witgo.Some(res.TrailersHandle)
+	if future.Result.Trailers != nil {
+		trailers = witgo.Some(i.hm.Fields.Add(future.Result.Trailers))
 	} else {
 		trailers = witgo.None[Trailers]()
 	}

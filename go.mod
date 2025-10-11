@@ -1,6 +1,8 @@
 module github.com/foxxorcat/wazero-wasip2
 
-go 1.24.2
+go 1.24.0
+
+toolchain go1.24.7
 
 require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7

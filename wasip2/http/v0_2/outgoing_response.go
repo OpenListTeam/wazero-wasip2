@@ -1,7 +1,6 @@
 package v0_2
 
 import (
-	"io"
 	gohttp "net/http"
 	"strconv"
 
@@ -24,34 +23,11 @@ func (i *outgoingResponseImpl) Constructor(headers Headers) OutgoingResponse {
 		Headers:    header,
 	}
 
-	id := i.hm.OutgoingResponses.Add(resp)
-
-	var contentLength *uint64
-	if headerFields, ok := i.hm.Fields.Get(headers); ok {
-		if cl, ok := headerFields["Content-Length"]; ok && len(cl) > 0 {
-			if val, err := strconv.ParseUint(cl[0], 10, 64); err == nil {
-				contentLength = &val
-			}
-		}
-	}
-
-	bodyID, bodyReader, bodyWriter := i.hm.NewOutgoingBody(id, contentLength)
-	resp.BodyHandle = bodyID
-	resp.Body = bodyReader
-	resp.BodyWriter = bodyWriter
-
-	return id
+	return i.hm.OutgoingResponses.Add(resp)
 }
 
 func (i *outgoingResponseImpl) Drop(this OutgoingResponse) {
-	if resp, ok := i.hm.OutgoingResponses.Pop(this); ok {
-		if resp.BodyHandle != 0 {
-			if body, ok := i.hm.Bodies.Pop(resp.BodyHandle); ok {
-				body.BodyWriter.CloseWithError(io.EOF)
-				i.hm.Streams.Remove(body.OutputStreamHandle)
-			}
-		}
-	}
+	i.hm.OutgoingResponses.Remove(this)
 }
 
 func (i *outgoingResponseImpl) StatusCode(this OutgoingResponse) StatusCode {
@@ -87,5 +63,19 @@ func (i *outgoingResponseImpl) Body(this OutgoingResponse) witgo.Result[Outgoing
 	if !resp.Consumed.CompareAndSwap(false, true) {
 		return witgo.Err[OutgoingBody, witgo.Unit](witgo.Unit{})
 	}
+
+	var contentLength *uint64
+	if cl, ok := resp.Headers["Content-Length"]; ok && len(cl) > 0 {
+		if val, err := strconv.ParseUint(cl[0], 10, 64); err == nil {
+			contentLength = &val
+		}
+	}
+
+	resp.BodyHandle, resp.Body, resp.BodyWriter = i.hm.NewOutgoingBody(contentLength, func(trailers manager_http.Fields) error {
+		if resp.Response != nil {
+			return trailers.Write(resp.Response)
+		}
+		return nil
+	})
 	return witgo.Ok[OutgoingBody, witgo.Unit](resp.BodyHandle)
 }

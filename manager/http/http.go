@@ -3,7 +3,6 @@ package http
 import (
 	"io"
 	"net/http"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -16,19 +15,25 @@ type Fields = http.Header
 
 // IncomingRequest 代表一个由 Host 接收的、传递给 Guest 的 HTTP 请求的内部表示。
 type IncomingRequest struct {
+	Request *http.Request
+
 	Method    string
 	Path      string
 	Query     string
 	Scheme    *string
 	Authority *string
 	Headers   uint32
-	Body      io.ReadCloser
+
+	Body io.ReadCloser
+
 	// BodyHandle 用于 Guest 端消费 Body
 	BodyHandle uint32
 }
 
 // OutgoingRequest 代表一个由 guest 构建的出站 HTTP 请求。
 type OutgoingRequest struct {
+	Request *http.Request
+
 	Method    string
 	Scheme    *string
 	Authority *string
@@ -37,6 +42,8 @@ type OutgoingRequest struct {
 
 	Trailers Fields // 用于存储 Trailers
 	Body     io.Reader
+
+	// 这里只是引用资源，不属于OutgoingRequest生命周期管理
 	// BodyWriter 用于在 Host 端写入 Guest 提供的数据
 	BodyWriter *io.PipeWriter
 	BodyHandle uint32 // 指向 outgoing-body 资源的句柄
@@ -45,10 +52,18 @@ type OutgoingRequest struct {
 	Consumed atomic.Bool
 }
 
+func (o *OutgoingRequest) Close() error {
+	if o.Body != nil {
+		if closer, ok := o.Body.(io.Closer); ok {
+			return closer.Close()
+		}
+	}
+	return nil
+}
+
 // IncomingResponse 代表一个已到达的、由 Host 接收的 HTTP 响应。
 type IncomingResponse struct {
 	Response *http.Response
-	Headers  Fields
 
 	Body       *IncomingBody
 	BodyHandle uint32 // 指向 incoming-body 的句柄
@@ -58,15 +73,28 @@ type IncomingResponse struct {
 
 // OutgoingResponse 代表一个由 Guest 构建的出站 HTTP 响应。
 type OutgoingResponse struct {
+	Response http.ResponseWriter
+
 	StatusCode int
 	Headers    Fields
 
-	Body       io.Reader
+	Body io.Reader
+
+	// 这里只是引用资源，不属于OutgoingResponse生命周期管理
 	BodyWriter *io.PipeWriter
 	BodyHandle uint32
 
 	// 消耗标记
 	Consumed atomic.Bool
+}
+
+func (o *OutgoingResponse) Close() error {
+	if o.Body != nil {
+		if closer, ok := o.Body.(io.Closer); ok {
+			return closer.Close()
+		}
+	}
+	return nil
 }
 
 // ResponseOutparam 是一个一次性的句柄，用于让 Guest 设置对 IncomingRequest 的响应。
@@ -78,22 +106,31 @@ type ResponseOutparam struct {
 
 // IncomingBody 代表一个入站的 HTTP Body。
 type IncomingBody struct {
-	Stream       io.Reader
 	StreamHandle uint32 // 指向 input-stream 的句柄
+	Stream       io.Reader
 
-	Trailers uint32 // 指向 future-trailers 的句柄
+	// 可选方法
+	GetTrailers func() (trailers Fields)
 
 	// 消耗标记
 	Consumed atomic.Bool
+}
+
+func (o *IncomingBody) Close() error {
+	if o.Stream != nil {
+		if closer, ok := o.Stream.(io.Closer); ok {
+			closer.Close()
+		}
+	}
+	return nil
 }
 
 // OutgoingBody 代表一个出站的 HTTP Body。
 type OutgoingBody struct {
 	OutputStreamHandle uint32
 	BodyWriter         *io.PipeWriter
-
-	Request  uint32 // OutgoingRequest or OutgoingResponse
-	Response uint32 // OutgoingRequest or OutgoingResponse
+	// 可选方法
+	SetTrailers func(trailers Fields) error
 
 	ContentLength *uint64
 	BytesWritten  atomic.Uint64
@@ -102,18 +139,23 @@ type OutgoingBody struct {
 	Consumed atomic.Bool
 }
 
+func (o *OutgoingBody) Close() error {
+	if o.BodyWriter != nil {
+		o.BodyWriter.CloseWithError(io.EOF)
+	}
+	return nil
+}
+
 // FutureTrailers 代表一个尚未到达的 HTTP Trailers。
 type FutureTrailers struct {
-	ResultChan   chan ResultTrailers
-	Result       atomic.Pointer[ResultTrailers]
-	Consumed     atomic.Bool
-	Pollable     *manager_io.ChannelPollable
-	PollableOnce sync.Once
+	Pollable *manager_io.ChannelPollable
+	Result   ResultTrailers
+	Consumed atomic.Bool
 }
 
 type ResultTrailers struct {
-	TrailersHandle uint32 // 指向 Fields (Trailers) 的句柄
-	Err            error
+	Trailers Fields
+	Err      error
 }
 
 // RequestOptions 存储了 wasi:http/types.request-options 的状态。
@@ -126,78 +168,98 @@ type RequestOptions struct {
 // FutureIncomingResponse 代表一个尚未到达的 HTTP 响应。
 // ResultChan 是实现异步的核心。
 type FutureIncomingResponse struct {
-	ResultChan   chan Result
-	Result       atomic.Pointer[Result]
-	Consumed     atomic.Bool
-	Pollable     *manager_io.ChannelPollable
-	PollableOnce sync.Once
+	Pollable *manager_io.ChannelPollable
+	Consumed atomic.Bool
+	Result   Result
 }
 
 // Result 是一个内部类型，用于在 goroutine 之间传递 HTTP 请求的结果。
 type Result struct {
-	ResponseHandle uint32 // 指向 IncomingResponse 的句柄
-	Err            error  // 或一个 Go 的 error
+	// ResponseHandle uint32 // 指向 IncomingResponse 的句柄
+	Response *http.Response
+	Err      error // 或一个 Go 的 error
 }
 
 // FieldsManager 使用通用 ResourceManager 来管理 Fields 资源。
 type FieldsManager = witgo.ResourceManager[Fields]
 
 func NewFieldsManager() *FieldsManager {
-	return witgo.NewResourceManager[Fields]()
+	return witgo.NewResourceManager[Fields](nil)
 }
 
 // HTTPManager 是所有 HTTP 相关资源的总管理器。
 type HTTPManager struct {
-	Fields            *FieldsManager
-	Streams           *manager_io.StreamManager
-	Poll              *manager_io.PollManager
+	Fields  *FieldsManager
+	Streams *manager_io.StreamManager
+	Poll    *manager_io.PollManager
+
+	Options          *witgo.ResourceManager[*RequestOptions]
+	OutgoingRequests *witgo.ResourceManager[*OutgoingRequest]
+	Futures          *witgo.ResourceManager[*FutureIncomingResponse]
+	Responses        *witgo.ResourceManager[*IncomingResponse]
+	Bodies           *witgo.ResourceManager[*OutgoingBody]
+	FutureTrailers   *witgo.ResourceManager[*FutureTrailers]
+
 	IncomingRequests  *witgo.ResourceManager[*IncomingRequest]
-	OutgoingRequests  *witgo.ResourceManager[*OutgoingRequest]
-	Responses         *witgo.ResourceManager[*IncomingResponse]
-	OutgoingResponses *witgo.ResourceManager[*OutgoingResponse]
 	ResponseOutparams *witgo.ResourceManager[*ResponseOutparam]
-	Bodies            *witgo.ResourceManager[*OutgoingBody]
-	Futures           *witgo.ResourceManager[*FutureIncomingResponse]
+	OutgoingResponses *witgo.ResourceManager[*OutgoingResponse]
 	IncomingBodies    *witgo.ResourceManager[*IncomingBody]
-	FutureTrailers    *witgo.ResourceManager[*FutureTrailers]
-	Options           *witgo.ResourceManager[*RequestOptions]
 }
 
 func NewHTTPManager(sm *manager_io.StreamManager, poll *manager_io.PollManager) *HTTPManager {
 	return &HTTPManager{
-		Fields:            NewFieldsManager(),
-		Streams:           sm,
-		Poll:              poll,
-		IncomingRequests:  witgo.NewResourceManager[*IncomingRequest](),
-		OutgoingRequests:  witgo.NewResourceManager[*OutgoingRequest](),
-		Responses:         witgo.NewResourceManager[*IncomingResponse](),
-		OutgoingResponses: witgo.NewResourceManager[*OutgoingResponse](),
-		ResponseOutparams: witgo.NewResourceManager[*ResponseOutparam](),
-		Bodies:            witgo.NewResourceManager[*OutgoingBody](),
-		Futures:           witgo.NewResourceManager[*FutureIncomingResponse](),
-		IncomingBodies:    witgo.NewResourceManager[*IncomingBody](),
-		FutureTrailers:    witgo.NewResourceManager[*FutureTrailers](),
-		Options:           witgo.NewResourceManager[*RequestOptions](),
+		Fields:  NewFieldsManager(),
+		Streams: sm,
+		Poll:    poll,
+
+		// guest -> host
+		Options: witgo.NewResourceManager[*RequestOptions](nil),
+		OutgoingRequests: witgo.NewResourceManager[*OutgoingRequest](func(resource *OutgoingRequest) {
+			resource.Close()
+		}),
+		Futures:   witgo.NewResourceManager[*FutureIncomingResponse](nil),
+		Responses: witgo.NewResourceManager[*IncomingResponse](nil),
+		Bodies: witgo.NewResourceManager[*OutgoingBody](func(resource *OutgoingBody) {
+			resource.Close()
+
+			// NOTE: 为了防止忘记关闭，这里的生命周期和Stream绑定
+			if resource.BodyWriter != nil {
+				resource.BodyWriter.CloseWithError(io.ErrShortWrite)
+				sm.Remove(resource.OutputStreamHandle)
+			}
+		}),
+		FutureTrailers: witgo.NewResourceManager[*FutureTrailers](nil),
+
+		IncomingRequests: witgo.NewResourceManager[*IncomingRequest](func(resource *IncomingRequest) {
+			resource.Body.Close()
+		}),
+		ResponseOutparams: witgo.NewResourceManager[*ResponseOutparam](func(resource *ResponseOutparam) {
+			close(resource.ResultChan)
+		}),
+		OutgoingResponses: witgo.NewResourceManager[*OutgoingResponse](func(resource *OutgoingResponse) {
+			resource.Close()
+		}),
+		IncomingBodies: witgo.NewResourceManager[*IncomingBody](func(resource *IncomingBody) {
+			resource.Close()
+
+			// NOTE: 为了防止忘记关闭，这里的生命周期和Stream绑定
+			if resource.Stream != nil {
+				sm.Remove(resource.StreamHandle)
+			}
+		}),
 	}
 }
 
-// parentHandle 是指所属的 OutgoingRequest 或 OutgoingResponse 的句柄
-func (hm *HTTPManager) NewOutgoingBody(parentHandle uint32, contentLength *uint64) (bodyHandle uint32, bodyReader *io.PipeReader, bodyWriter *io.PipeWriter) {
+func (hm *HTTPManager) NewOutgoingBody(contentLength *uint64, setTrailers func(trailers Fields) error) (bodyHandle uint32, bodyReader *io.PipeReader, bodyWriter *io.PipeWriter) {
 	pr, pw := io.Pipe()
 
 	body := &OutgoingBody{
-		OutputStreamHandle: 0, // 稍后设置
+		OutputStreamHandle: 0, // 使用时设置
 		BodyWriter:         pw,
-		Request:            parentHandle,
+		SetTrailers:        setTrailers,
 		ContentLength:      contentLength,
 	}
 
-	// 【修改】在创建 stream 时传入 body.BytesWritten 的地址
-	stream := manager_io.NewAsyncStreamForWriter(pw, manager_io.WriterWritten(&body.BytesWritten))
-	streamHandle := hm.Streams.Add(stream)
-
-	body.OutputStreamHandle = streamHandle
 	bodyHandle = hm.Bodies.Add(body)
-
 	return bodyHandle, pr, pw
 }

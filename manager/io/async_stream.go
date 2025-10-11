@@ -190,6 +190,7 @@ func DontCloseWriter() AsyncWriteWrapperOption {
 	}
 }
 
+// 记录写入数量
 func WriterWritten(bytesWritten *atomic.Uint64) AsyncWriteWrapperOption {
 	return func(aww *AsyncWriteWrapper) {
 		aww.bytesWritten = bytesWritten

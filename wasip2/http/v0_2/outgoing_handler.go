@@ -1,10 +1,7 @@
 package v0_2
 
 import (
-	"context"
-	"errors"
 	"fmt"
-	"io"
 	"net"
 	gohttp "net/http"
 	"net/url"
@@ -34,20 +31,18 @@ func newOutgoingHandlerImpl(hm *manager_http.HTTPManager) *outgoingHandlerImpl {
 	return &outgoingHandlerImpl{hm, clientCache}
 }
 
-func (i *outgoingHandlerImpl) getClient(options witgo.Option[RequestOptions]) *gohttp.Client {
+func (i *outgoingHandlerImpl) getClient(opts *manager_http.RequestOptions) *gohttp.Client {
 	// 1. 确定超时配置。如果无特定选项，则使用零值配置。
 	var cfg timeoutConfig
-	if options.IsSome() {
-		if opts, ok := i.hm.Options.Pop(*options.Some); ok {
-			if opts.ConnectTimeout != nil {
-				cfg.connect = time.Duration(*opts.ConnectTimeout)
-			}
-			if opts.FirstByteTimeout != nil {
-				cfg.firstByte = time.Duration(*opts.FirstByteTimeout)
-			}
-			if opts.BetweenBytesTimeout != nil {
-				cfg.betweenBytes = time.Duration(*opts.BetweenBytesTimeout)
-			}
+	if opts != nil {
+		if opts.ConnectTimeout != nil {
+			cfg.connect = time.Duration(*opts.ConnectTimeout)
+		}
+		if opts.FirstByteTimeout != nil {
+			cfg.firstByte = time.Duration(*opts.FirstByteTimeout)
+		}
+		if opts.BetweenBytesTimeout != nil {
+			cfg.betweenBytes = time.Duration(*opts.BetweenBytesTimeout)
 		}
 	}
 
@@ -73,6 +68,7 @@ func (i *outgoingHandlerImpl) getClient(options witgo.Option[RequestOptions]) *g
 	}).DialContext
 	transport.ResponseHeaderTimeout = cfg.firstByte
 
+	// 重定向和CookieJar由guest接管
 	client := &gohttp.Client{
 		Transport: transport,
 		Timeout:   cfg.betweenBytes, // 整个请求的超时，包括读取响应体
@@ -91,11 +87,16 @@ func (i *outgoingHandlerImpl) getClient(options witgo.Option[RequestOptions]) *g
 // 这是执行 HTTP 请求的核心。
 // 调用后会消耗掉request和options
 func (i *outgoingHandlerImpl) Handle(
-	_ context.Context,
 	request OutgoingRequest,
 	options witgo.Option[RequestOptions], // options 是可选的
 ) witgo.Result[FutureIncomingResponse, ErrorCode] {
 	// 1. 从管理器中获取我们之前构建的 OutgoingRequest 对象。
+	// 消耗掉资源
+	var opts *manager_http.RequestOptions
+	if options.IsSome() {
+		opts, _ = i.hm.Options.Pop(*options.Some)
+	}
+
 	req, ok := i.hm.OutgoingRequests.Pop(request)
 	if !ok {
 		// 如果请求句柄无效，返回错误。
@@ -108,71 +109,36 @@ func (i *outgoingHandlerImpl) Handle(
 		return witgo.Err[FutureIncomingResponse, ErrorCode](ErrorCode{InternalError: witgo.SomePtr(err.Error())})
 	}
 
+	client := i.getClient(opts)
+
 	// 3. 创建一个 FutureIncomingResponse 资源。这是异步的关键。
 	//    它包含一个 channel，后台的 goroutine 将通过它发送最终结果。
 	future := &manager_http.FutureIncomingResponse{
-		ResultChan: make(chan manager_http.Result, 1), // 缓冲为 1，以防发送时没有接收者
+		Pollable: manager_io.NewPollable(nil),
 	}
-	futureHandle := i.hm.Futures.Add(future)
-	// 创建站位
-	goReq.Trailer = gohttp.Header{}
 
 	// 4. 启动一个新的 goroutine 来异步执行 HTTP 请求。
-	go i.executeRequest(i.getClient(options), goReq, future)
+	go i.executeRequest(client, goReq, future)
 
 	// 5. 立即返回 future 句柄，不阻塞。
+	futureHandle := i.hm.Futures.Add(future)
 	return witgo.Ok[FutureIncomingResponse, ErrorCode](futureHandle)
 }
 
 // executeRequest 在一个单独的 goroutine 中运行。
 func (i *outgoingHandlerImpl) executeRequest(client *gohttp.Client, goReq *gohttp.Request, future *manager_http.FutureIncomingResponse) {
+	defer future.Pollable.SetReady()
+
 	resp, err := client.Do(goReq)
 
 	if err != nil {
-		future.ResultChan <- manager_http.Result{
+		future.Result = manager_http.Result{
 			Err: err,
 		}
 		return
 	}
-
-	// 2. 创建 FutureTrailers 资源
-	futureTrailers := &manager_http.FutureTrailers{
-		ResultChan: make(chan manager_http.ResultTrailers, 1),
-	}
-	futureTrailersID := i.hm.FutureTrailers.Add(futureTrailers)
-
-	// 3. 创建一个包装了 trailers 逻辑的 reader
-	bodyReader := &trailerReader{
-		body:         resp.Body,
-		trailers:     resp.Trailer,
-		trailersChan: futureTrailers.ResultChan,
-		fieldsMgr:    i.hm.Fields,
-	}
-
-	// 使用 NewAsyncStreamForReader 将 bodyReader 封装成支持 poll 的异步流。
-	stream := manager_io.NewAsyncStreamForReader(bodyReader)
-	streamID := i.hm.Streams.Add(stream)
-
-	// 4. 创建 IncomingBody，并链接 stream 和 future-trailers
-	body := &manager_http.IncomingBody{
-		Stream:       bodyReader,
-		StreamHandle: streamID,
-		Trailers:     futureTrailersID,
-	}
-	bodyID := i.hm.IncomingBodies.Add(body)
-
-	// 5. 创建 IncomingResponse 资源, 并链接 body
-	incomingResponse := &manager_http.IncomingResponse{
-		Response:   resp,
-		Headers:    resp.Header,
-		Body:       body,
-		BodyHandle: bodyID,
-	}
-	responseHandle := i.hm.Responses.Add(incomingResponse)
-
-	// 6. 将成功的响应句柄发送到 channel。
-	future.ResultChan <- manager_http.Result{
-		ResponseHandle: responseHandle,
+	future.Result = manager_http.Result{
+		Response: resp,
 	}
 }
 
@@ -195,41 +161,8 @@ func (i *outgoingHandlerImpl) buildGoRequest(req *manager_http.OutgoingRequest) 
 		return nil, err
 	}
 	goReq.Header = req.Headers
+	goReq.Trailer = make(gohttp.Header)
 
+	req.Request = goReq
 	return goReq, nil
-}
-
-// trailerReader 包装了 http.Response.Body，用于在读取到 EOF 时，
-// 将 trailers 发送到 channel 中。
-type trailerReader struct {
-	body         io.ReadCloser
-	trailers     gohttp.Header
-	trailersChan chan<- manager_http.ResultTrailers
-	fieldsMgr    *manager_http.FieldsManager
-	sent         bool
-}
-
-func (r *trailerReader) Read(p []byte) (n int, err error) {
-	n, err = r.body.Read(p)
-	if err == io.EOF && !r.sent {
-		r.sendTrailers(nil)
-	}
-	return
-}
-
-func (r *trailerReader) Close() error {
-	if !r.sent {
-		r.sendTrailers(errors.New("body closed before trailers were received"))
-	}
-	return r.body.Close()
-}
-
-func (r *trailerReader) sendTrailers(err error) {
-	r.sent = true
-	var trailersID uint32
-	if err == nil && len(r.trailers) > 0 {
-		trailersID = r.fieldsMgr.Add(manager_http.Fields(r.trailers))
-	}
-	r.trailersChan <- manager_http.ResultTrailers{TrailersHandle: trailersID, Err: err}
-	close(r.trailersChan)
 }

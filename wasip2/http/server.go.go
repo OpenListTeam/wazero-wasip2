@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	manager_http "github.com/foxxorcat/wazero-wasip2/manager/http"
-	manager_io "github.com/foxxorcat/wazero-wasip2/manager/io"
 	"github.com/foxxorcat/wazero-wasip2/wasip2"
 	v0_2 "github.com/foxxorcat/wazero-wasip2/wasip2/http/v0_2"
 	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
@@ -57,20 +56,18 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("failed to create incoming-request: %v", err), http.StatusInternalServerError)
 		return
 	}
-	defer hm.IncomingRequests.Remove(reqHandle)
 
 	// 2. 创建一个 response-outparam
 	respChan := make(chan any, 1)
 	outparam := &manager_http.ResponseOutparam{ResultChan: respChan}
 	outparamHandle := hm.ResponseOutparams.Add(outparam)
+	defer hm.ResponseOutparams.Remove(outparamHandle)
 
 	// 3. 调用 guest 的 handle 函数
 	_, err = s.handleFunc.Call(ctx, uint64(reqHandle), uint64(outparamHandle))
 	if err != nil {
 		// Guest 模块执行出错 (trap)
 		http.Error(w, fmt.Sprintf("guest handle function trapped: %v", err), http.StatusInternalServerError)
-		// 确保 outparam 被移除，防止泄露
-		hm.ResponseOutparams.Remove(outparamHandle)
 		return
 	}
 
@@ -102,29 +99,22 @@ func (s *Server) createIncomingRequest(ctx context.Context, r *http.Request) (v0
 	}
 	headersHandle := hm.Fields.Add(headers)
 
-	// 创建 IncomingBody 和 Stream
-	bodyStream := manager_io.NewAsyncStreamForReader(r.Body)
-	bodyStreamHandle := hm.Streams.Add(bodyStream)
-
-	// incoming-body 不需要 trailers，因为这是服务器接收的请求
-	body := &manager_http.IncomingBody{
-		StreamHandle: bodyStreamHandle,
-	}
-	bodyHandle := hm.IncomingBodies.Add(body)
-
 	// 构造最终的 IncomingRequest
 	scheme := "http"
 	if r.TLS != nil {
 		scheme = "https"
 	}
 	req := &manager_http.IncomingRequest{
-		Method:     r.Method,
-		Path:       r.URL.Path,
-		Query:      r.URL.RawQuery,
-		Scheme:     &scheme,
-		Authority:  &r.Host,
-		Headers:    headersHandle,
-		BodyHandle: bodyHandle,
+		Request: r,
+
+		Method:    r.Method,
+		Path:      r.URL.Path,
+		Query:     r.URL.RawQuery,
+		Scheme:    &scheme,
+		Authority: &r.Host,
+		Headers:   headersHandle,
+
+		Body: r.Body,
 	}
 	reqHandle := hm.IncomingRequests.Add(req)
 	return reqHandle, nil
@@ -133,12 +123,12 @@ func (s *Server) createIncomingRequest(ctx context.Context, r *http.Request) (v0
 // writeOutgoingResponse 将 guest 返回的 OutgoingResponse 写入 http.ResponseWriter
 func (s *Server) writeOutgoingResponse(w http.ResponseWriter, respHandle v0_2.OutgoingResponse) {
 	hm := s.wasiHost.HTTPManager()
-	resp, ok := hm.OutgoingResponses.Get(respHandle)
+	resp, ok := hm.OutgoingResponses.Pop(respHandle)
 	if !ok {
 		http.Error(w, "internal error: invalid outgoing-response handle", http.StatusInternalServerError)
 		return
 	}
-	defer hm.OutgoingResponses.Remove(respHandle)
+	resp.Response = w
 
 	maps.Copy(w.Header(), resp.Headers)
 

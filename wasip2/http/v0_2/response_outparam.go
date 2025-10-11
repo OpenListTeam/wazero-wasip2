@@ -18,11 +18,10 @@ func (i *responseOutparamImpl) Drop(this ResponseOutparam) {
 }
 
 func (i *responseOutparamImpl) Set(param ResponseOutparam, response witgo.Result[OutgoingResponse, ErrorCode]) {
-	p, ok := i.hm.ResponseOutparams.Get(param)
+	p, ok := i.hm.ResponseOutparams.Pop(param)
 	if !ok {
 		return
 	}
-	defer i.hm.ResponseOutparams.Remove(param)
 
 	if response.Err != nil {
 		p.ResultChan <- *response.Err

@@ -41,7 +41,11 @@ type StreamManager = witgo.ResourceManager[*Stream]
 
 // NewManager 创建一个新的 Stream 管理器。
 func NewStreamManager() *StreamManager {
-	return witgo.NewResourceManager[*Stream]()
+	return witgo.NewResourceManager[*Stream](func(resource *Stream) {
+		if resource.Closer != nil {
+			_ = resource.Closer.Close()
+		}
+	})
 }
 
 func NewManager() (*StreamManager, *PollManager, *ErrorManager) {

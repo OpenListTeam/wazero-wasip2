@@ -2,13 +2,14 @@ package v0_2
 
 import (
 	"context"
-	"io"
+	"maps"
 	"strconv"
 
 	manager_http "github.com/foxxorcat/wazero-wasip2/manager/http"
 	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
 )
 
+// guest 发起请求 host 处理
 type outgoingRequestImpl struct {
 	hm *manager_http.HTTPManager
 }
@@ -18,39 +19,17 @@ func newOutgoingRequestImpl(hm *manager_http.HTTPManager) *outgoingRequestImpl {
 }
 
 func (i *outgoingRequestImpl) Constructor(fields Fields) OutgoingRequest {
+	// 消耗掉资源
 	header, _ := i.hm.Fields.Pop(fields)
 	req := &manager_http.OutgoingRequest{
 		Headers:  header,
 		Trailers: make(manager_http.Fields),
 	}
-
-	handle := i.hm.OutgoingRequests.Add(req)
-
-	var contentLength *uint64
-	// 直接在 header 对象上检查 Content-Length
-	if cl, ok := header["Content-Length"]; ok && len(cl) > 0 {
-		if val, err := strconv.ParseUint(cl[0], 10, 64); err == nil {
-			contentLength = &val
-		}
-	}
-
-	bodyHandle, bodyReader, bodyWriter := i.hm.NewOutgoingBody(handle, contentLength)
-	req.BodyHandle = bodyHandle
-	req.Body = bodyReader
-	req.BodyWriter = bodyWriter
-
-	return handle
+	return i.hm.OutgoingRequests.Add(req)
 }
 
 func (i *outgoingRequestImpl) Drop(_ context.Context, handle OutgoingRequest) {
-	if req, ok := i.hm.OutgoingRequests.Pop(handle); ok {
-		if req.BodyHandle != 0 {
-			if body, ok := i.hm.Bodies.Pop(req.BodyHandle); ok {
-				body.BodyWriter.CloseWithError(io.EOF)
-				i.hm.Streams.Remove(body.OutputStreamHandle)
-			}
-		}
-	}
+	i.hm.OutgoingRequests.Remove(handle)
 }
 
 // 返回当前请求对应的输出体（outgoing-body）资源。
@@ -63,6 +42,23 @@ func (i *outgoingRequestImpl) Body(_ context.Context, this OutgoingRequest) witg
 	if !req.Consumed.CompareAndSwap(false, true) {
 		return witgo.Err[OutgoingBody, witgo.Unit](witgo.Unit{})
 	}
+
+	var contentLength *uint64
+	if cl, ok := req.Headers["Content-Length"]; ok && len(cl) > 0 {
+		if val, err := strconv.ParseUint(cl[0], 10, 64); err == nil {
+			contentLength = &val
+		}
+	}
+	req.BodyHandle, req.Body, req.BodyWriter = i.hm.NewOutgoingBody(contentLength, func(trailers manager_http.Fields) error {
+		if req.Request != nil {
+			if req.Request.Trailer != nil {
+				maps.Copy(req.Request.Trailer, trailers)
+			} else {
+				req.Request.Trailer = trailers
+			}
+		}
+		return nil
+	})
 	return witgo.Ok[OutgoingBody, witgo.Unit](req.BodyHandle)
 }
 

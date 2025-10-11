@@ -120,14 +120,14 @@ type UDPSocketManager = witgo.ResourceManager[*UDPSocket]
 type ResolveAddressStreamManager = witgo.ResourceManager[*ResolveAddressStreamState]
 
 func NewNetworkManager() *NetworkManager {
-	return witgo.NewResourceManager[*Network]()
+	return witgo.NewResourceManager[*Network](nil)
 }
 func NewTCPSocketManager() *TCPSocketManager {
-	return witgo.NewResourceManager[*TCPSocket]()
+	return witgo.NewResourceManager[*TCPSocket](nil)
 }
 func NewUDPSocketManager() *UDPSocketManager {
-	return witgo.NewResourceManager[*UDPSocket]()
+	return witgo.NewResourceManager[*UDPSocket](nil)
 }
 func NewResolveAddressStreamManager() *ResolveAddressStreamManager {
-	return witgo.NewResourceManager[*ResolveAddressStreamState]()
+	return witgo.NewResourceManager[*ResolveAddressStreamState](nil)
 }

@@ -23,7 +23,9 @@ type Manager = witgo.ResourceManager[*Descriptor]
 
 // NewManager creates a new filesystem descriptor manager.
 func NewManager() *Manager {
-	return witgo.NewResourceManager[*Descriptor]()
+	return witgo.NewResourceManager[*Descriptor](func(resource *Descriptor) {
+		resource.File.Close()
+	})
 }
 
 // DirectoryEntryStreamState 用于管理读取目录的状态。
@@ -39,5 +41,5 @@ type DirectoryEntryStreamManager = witgo.ResourceManager[*DirectoryEntryStreamSt
 
 // NewDirectoryEntryStreamManager 创建一个新的目录流管理器。
 func NewDirectoryEntryStreamManager() *DirectoryEntryStreamManager {
-	return witgo.NewResourceManager[*DirectoryEntryStreamState]()
+	return witgo.NewResourceManager[*DirectoryEntryStreamState](nil)
 }

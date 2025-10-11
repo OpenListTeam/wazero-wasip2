@@ -24,7 +24,7 @@ func (i *incomingResponseImpl) Drop(_ context.Context, handle IncomingResponse) 
 func (i *incomingResponseImpl) Status(_ context.Context, this IncomingResponse) uint16 {
 	resp, ok := i.hm.Responses.Get(this)
 	if !ok {
-		return 0
+		panic("invalid incoming-respone handle")
 	}
 	return uint16(resp.Response.StatusCode)
 }
@@ -33,9 +33,9 @@ func (i *incomingResponseImpl) Status(_ context.Context, this IncomingResponse) 
 func (i *incomingResponseImpl) Headers(_ context.Context, this IncomingResponse) Fields {
 	resp, ok := i.hm.Responses.Get(this)
 	if !ok {
-		return 0
+		panic("invalid incoming-respone handle")
 	}
-	return i.hm.Fields.Add(manager_http.Fields(resp.Headers))
+	return i.hm.Fields.Add(manager_http.Fields(resp.Response.Header))
 }
 
 // Consume 实现了 [method]incoming-response.consume。
@@ -49,5 +49,12 @@ func (i *incomingResponseImpl) Consume(_ context.Context, this IncomingResponse)
 		return witgo.Err[OutgoingBody, witgo.Unit](witgo.Unit{})
 	}
 
+	body := &manager_http.IncomingBody{
+		Stream: resp.Response.Body,
+		GetTrailers: func() (trailers manager_http.Fields) {
+			return resp.Response.Trailer
+		},
+	}
+	resp.BodyHandle = i.hm.IncomingBodies.Add(body)
 	return witgo.Ok[IncomingBody, witgo.Unit](resp.BodyHandle)
 }

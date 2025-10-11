@@ -69,8 +69,8 @@ func (i *tlsTypes) Instantiate(_ context.Context, h *wasip2.Host, builder wazero
 
 	// --- client-handshake ---
 	exporter.Export("[constructor]client-handshake", func(serverName string, inputStream InputStream, outputStream OutputStream) ClientHandshake {
-		inStream, inOk := sm.Get(inputStream)
-		outStream, outOk := sm.Get(outputStream)
+		inStream, inOk := sm.Pop(inputStream)
+		outStream, outOk := sm.Pop(outputStream)
 		if !inOk || !outOk {
 			panic("invalid input or output stream for TLS handshake")
 		}
@@ -85,26 +85,28 @@ func (i *tlsTypes) Instantiate(_ context.Context, h *wasip2.Host, builder wazero
 	exporter.Export("[resource-drop]client-handshake", tm.ClientHandshakes.Remove)
 
 	exporter.Export("[static]client-handshake.finish", func(this ClientHandshake) FutureClientStreams {
-		handshake, ok := tm.ClientHandshakes.Get(this)
+		// 根据 WIT 规范，finish 会消费掉 client-handshake 句柄。
+		handshake, ok := tm.ClientHandshakes.Pop(this)
 		if !ok {
 			panic("invalid client-handshake handle")
 		}
-		// 根据 WIT 规范，finish 会消费掉 client-handshake 句柄。
-		tm.ClientHandshakes.Remove(this)
 
 		future := &manager_tls.FutureClientStreams{
-			ResultChan: make(chan manager_tls.Result, 1),
+			Pollable: manager_io.NewPollable(nil),
 		}
+
 		futureHandle := tm.FutureClientStreams.Add(future)
 
 		// 在后台 goroutine 中启动 TLS 握手。
 		go func() {
+			defer future.Pollable.SetReady()
+
 			// 使用 streamConn 包装器来满足 net.Conn 接口。
 			underlyingConn := &streamConn{
 				reader: handshake.Input.Reader,
 				writer: handshake.Output.Writer,
 				// 假设两个流共享同一个 closer。
-				closer: handshake.Input.Closer,
+				closer: handshake,
 			}
 
 			tlsConn := tls.Client(underlyingConn, &tls.Config{
@@ -112,40 +114,18 @@ func (i *tlsTypes) Instantiate(_ context.Context, h *wasip2.Host, builder wazero
 			})
 
 			if err := tlsConn.Handshake(); err != nil {
-				future.ResultChan <- manager_tls.Result{Err: err}
+				future.Result = manager_tls.Result{Err: err}
 				return
 			}
 
-			// 为加密连接创建新的异步流。
-			inStreamEncrypted := manager_io.NewAsyncStreamForReader(tlsConn)
-			outStreamEncrypted := manager_io.NewAsyncStreamForWriter(tlsConn)
-
-			inStreamHandle := sm.Add(inStreamEncrypted)
-			outStreamHandle := sm.Add(outStreamEncrypted)
-
-			// 创建 client-connection 资源。
-			conn := &manager_tls.ClientConnection{Conn: tlsConn}
-			connHandle := tm.ClientConnections.Add(conn)
-
-			// 发送成功结果。
-			future.ResultChan <- manager_tls.Result{
-				ConnectionHandle: connHandle,
-				InputStream:      inStreamHandle,
-				OutputStream:     outStreamHandle,
-			}
+			future.Result = manager_tls.Result{TlsConn: tlsConn}
 		}()
 
 		return futureHandle
 	})
 
 	// --- client-connection ---
-	exporter.Export("[resource-drop]client-connection", func(handle ClientConnection) {
-		conn, ok := tm.ClientConnections.Get(handle)
-		if ok {
-			conn.Conn.Close()
-		}
-		tm.ClientConnections.Remove(handle)
-	})
+	exporter.Export("[resource-drop]client-connection", tm.ClientConnections.Remove)
 
 	exporter.Export("[method]client-connection.close-output", func(this ClientConnection) {
 		conn, ok := tm.ClientConnections.Get(this)
@@ -164,32 +144,19 @@ func (i *tlsTypes) Instantiate(_ context.Context, h *wasip2.Host, builder wazero
 			return h.PollManager().Add(manager_io.ReadyPollable)
 		}
 
-		future.PollableOnce.Do(func() {
-			ctx, cancel := context.WithCancel(context.Background())
-			future.Pollable = manager_io.NewPollable(cancel)
-			go func() {
-				select {
-				case <-ctx.Done():
-					return
-				case res, ok := <-future.ResultChan:
-					if ok {
-						future.Result.Store(&res)
-					}
-					future.Pollable.SetReady()
-				}
-			}()
-		})
+		// future.Pollable 是没有close副作用的，可以使用同一个
 		return h.PollManager().Add(future.Pollable)
 	})
 
-	exporter.Export("[method]future-client-streams.get", func(this FutureClientStreams) witgo.Option[witgo.Result[witgo.Result[witgo.Tuple3[ClientConnection, InputStream, OutputStream], WasiError], witgo.Unit]] {
-		future, ok := tm.FutureClientStreams.Get(this)
+	exporter.Export("[method]future-client-streams.get", func(ctx context.Context, this FutureClientStreams) witgo.Option[witgo.Result[witgo.Result[witgo.Tuple3[ClientConnection, InputStream, OutputStream], WasiError], witgo.Unit]] {
+		future, ok := tm.FutureClientStreams.Pop(this)
 		if !ok {
 			return witgo.None[witgo.Result[witgo.Result[witgo.Tuple3[ClientConnection, InputStream, OutputStream], WasiError], witgo.Unit]]()
 		}
 
-		res := future.Result.Load()
-		if res == nil {
+		select {
+		case <-future.Pollable.Channel():
+		case <-ctx.Done():
 			return witgo.None[witgo.Result[witgo.Result[witgo.Tuple3[ClientConnection, InputStream, OutputStream], WasiError], witgo.Unit]]()
 		}
 
@@ -197,20 +164,29 @@ func (i *tlsTypes) Instantiate(_ context.Context, h *wasip2.Host, builder wazero
 			return witgo.Some(witgo.Err[witgo.Result[witgo.Tuple3[ClientConnection, InputStream, OutputStream], WasiError], witgo.Unit](witgo.Unit{}))
 		}
 
-		var innerResult witgo.Result[witgo.Tuple3[ClientConnection, InputStream, OutputStream], WasiError]
-		if res.Err != nil {
-			errHandle := em.Add(res.Err)
-			innerResult = witgo.Err[witgo.Tuple3[ClientConnection, InputStream, OutputStream], WasiError](errHandle)
-		} else {
-			tuple := witgo.Tuple3[ClientConnection, InputStream, OutputStream]{
-				F0: res.ConnectionHandle,
-				F1: res.InputStream,
-				F2: res.OutputStream,
-			}
-			innerResult = witgo.Ok[witgo.Tuple3[ClientConnection, InputStream, OutputStream], WasiError](tuple)
+		if future.Result.Err != nil {
+			errHandle := em.Add(future.Result.Err)
+			return witgo.Some(witgo.Ok[witgo.Result[witgo.Tuple3[ClientConnection, InputStream, OutputStream], WasiError], witgo.Unit](witgo.Err[witgo.Tuple3[ClientConnection, InputStream, OutputStream], WasiError](errHandle)))
 		}
 
-		return witgo.Some(witgo.Ok[witgo.Result[witgo.Tuple3[ClientConnection, InputStream, OutputStream], WasiError], witgo.Unit](innerResult))
+		tlsConn := future.Result.TlsConn
+		// 为加密连接创建新的异步流。
+		inStreamEncrypted := manager_io.NewAsyncStreamForReader(tlsConn)
+		outStreamEncrypted := manager_io.NewAsyncStreamForWriter(tlsConn)
+
+		inStreamHandle := sm.Add(inStreamEncrypted)
+		outStreamHandle := sm.Add(outStreamEncrypted)
+
+		// 创建 client-connection 资源。
+		conn := &manager_tls.ClientConnection{Conn: tlsConn}
+		connHandle := tm.ClientConnections.Add(conn)
+
+		tuple := witgo.Tuple3[ClientConnection, InputStream, OutputStream]{
+			F0: connHandle,
+			F1: inStreamHandle,
+			F2: outStreamHandle,
+		}
+		return witgo.Some(witgo.Ok[witgo.Result[witgo.Tuple3[ClientConnection, InputStream, OutputStream], WasiError], witgo.Unit](witgo.Ok[witgo.Tuple3[ClientConnection, InputStream, OutputStream], WasiError](tuple)))
 	})
 
 	return nil

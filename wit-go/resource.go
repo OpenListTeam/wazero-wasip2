@@ -2,36 +2,60 @@ package witgo
 
 import (
 	"sync"
-	"sync/atomic"
 )
+
+// DestructorFunc defines the signature for a function that cleans up a resource.
+type DestructorFunc[T any] func(resource T)
 
 // ResourceManager[T] is a generic, thread-safe handle table for managing
 // host-owned resources of a specific type T.
 // T should be the concrete Go type of the resource (e.g., *MyStream, *os.File).
 type ResourceManager[T any] struct {
-	mu      sync.RWMutex
-	handles map[uint32]T // The map now stores values of the generic type T.
-	nextID  uint32
+	mu         sync.RWMutex
+	handles    map[uint32]T
+	nextID     uint32
+	destructor DestructorFunc[T] // Optional function to call when a resource is removed.
 }
 
 // NewResourceManager creates a new generic resource manager for a specific type.
-func NewResourceManager[T any]() *ResourceManager[T] {
+// The optional destructor function is called when a resource is removed via the
+// Remove method. It is NOT called for Pop, which implies ownership transfer.
+func NewResourceManager[T any](destructor DestructorFunc[T]) *ResourceManager[T] {
 	return &ResourceManager[T]{
-		handles: make(map[uint32]T),
-		nextID:  0, // Start handles at 1 for safety (0 is often an invalid handle).
+		handles:    make(map[uint32]T),
+		nextID:     0, // Start handles at 1 for safety (0 is often an invalid handle).
+		destructor: destructor,
 	}
+}
+
+// Set associates a resource with a specific handle. If the handle is greater
+// than the internal counter, the counter is updated.
+func (m *ResourceManager[T]) Set(handle uint32, resource T) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// IMPROVEMENT: Removed redundant atomic operations. The exclusive lock already
+	// guarantees atomicity for this block.
+	if m.nextID < handle {
+		m.nextID = handle
+	}
+	m.handles[handle] = resource
 }
 
 // Add stores a new resource and returns a handle to it.
 func (m *ResourceManager[T]) Add(resource T) uint32 {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	handle := atomic.AddUint32(&m.nextID, 1)
+
+	// IMPROVEMENT: Replaced atomic operation with a simple increment. It's safe
+	// due to the surrounding exclusive lock.
+	m.nextID++
+	handle := m.nextID
 	m.handles[handle] = resource
 	return handle
 }
 
-// Get retrieves a resource by its handle. The returned value is already of type T.
+// Get retrieves a resource by its handle.
 func (m *ResourceManager[T]) Get(handle uint32) (T, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -39,18 +63,33 @@ func (m *ResourceManager[T]) Get(handle uint32) (T, bool) {
 	return res, ok
 }
 
-// Remove deletes a resource by its handle, allowing it to be garbage collected.
-func (m *ResourceManager[T]) Remove(handle uint32) {
+// Remove deletes a resource by its handle. If a destructor was provided on
+// creation, it is called on the resource before it's removed.
+func (m *ResourceManager[T]) Remove(handle uint32) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	// First, find the resource that corresponds to the handle.
+	res, ok := m.handles[handle]
+	if !ok {
+		return false // Nothing to do if handle doesn't exist.
+	}
+
+	// NEW: If a destructor function is set, call it with the resource.
+	if m.destructor != nil {
+		m.destructor(res)
+	}
+
 	delete(m.handles, handle)
+	return true
 }
 
-// Pop retrieves and removes the resource via its handle in a single atomic operation.
-// This is useful for resources that are consumed immediately after retrieval.
+// Pop retrieves and removes the resource by its handle in a single operation.
+// The destructor is NOT called, as this method implies a transfer of ownership.
 func (m *ResourceManager[T]) Pop(handle uint32) (T, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	res, ok := m.handles[handle]
 	if ok {
 		delete(m.handles, handle)
@@ -64,6 +103,8 @@ func (m *ResourceManager[T]) Pop(handle uint32) (T, bool) {
 func (m *ResourceManager[T]) Range(f func(handle uint32, resource T) bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+
+	// Note: The iteration order over a map is not guaranteed in Go.
 	for handle, resource := range m.handles {
 		if !f(handle, resource) {
 			break

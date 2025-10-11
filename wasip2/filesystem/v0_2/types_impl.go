@@ -30,9 +30,6 @@ func newTypesImpl(h *wasip2.Host) *typesImpl {
 // --- descriptor resource methods ---
 
 func (i *typesImpl) DropDescriptor(_ context.Context, handle Descriptor) {
-	if d, ok := i.host.FilesystemManager().Get(handle); ok {
-		d.File.Close()
-	}
 	i.host.FilesystemManager().Remove(handle)
 }
 
