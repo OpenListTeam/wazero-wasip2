@@ -32,6 +32,7 @@ type IncomingRequest struct {
 
 // OutgoingRequest 代表一个由 guest 构建的出站 HTTP 请求。
 type OutgoingRequest struct {
+	// 在handle调用后设置
 	Request *http.Request
 
 	Method    string
@@ -40,8 +41,7 @@ type OutgoingRequest struct {
 	Path      string
 	Headers   Fields
 
-	Trailers Fields // 用于存储 Trailers
-	Body     io.Reader
+	Body io.Reader
 
 	// 这里只是引用资源，不属于OutgoingRequest生命周期管理
 	// BodyWriter 用于在 Host 端写入 Guest 提供的数据
@@ -64,6 +64,9 @@ func (o *OutgoingRequest) Close() error {
 // IncomingResponse 代表一个已到达的、由 Host 接收的 HTTP 响应。
 type IncomingResponse struct {
 	Response *http.Response
+
+	StatusCode int
+	Headers    Fields
 
 	Body       *IncomingBody
 	BodyHandle uint32 // 指向 incoming-body 的句柄
@@ -106,6 +109,7 @@ type ResponseOutparam struct {
 
 // IncomingBody 代表一个入站的 HTTP Body。
 type IncomingBody struct {
+	// 因为go http 的限制Body和Stream 生命周期统一管理
 	StreamHandle uint32 // 指向 input-stream 的句柄
 	Stream       io.Reader
 
@@ -127,8 +131,10 @@ func (o *IncomingBody) Close() error {
 
 // OutgoingBody 代表一个出站的 HTTP Body。
 type OutgoingBody struct {
+	// 因为go http 的限制Body和Stream 生命周期统一管理
 	OutputStreamHandle uint32
 	BodyWriter         *io.PipeWriter
+
 	// 可选方法
 	SetTrailers func(trailers Fields) error
 
@@ -254,10 +260,10 @@ func (hm *HTTPManager) NewOutgoingBody(contentLength *uint64, setTrailers func(t
 	pr, pw := io.Pipe()
 
 	body := &OutgoingBody{
-		OutputStreamHandle: 0, // 使用时设置
-		BodyWriter:         pw,
-		SetTrailers:        setTrailers,
-		ContentLength:      contentLength,
+		// OutputStreamHandle: 0, // 使用时设置
+		BodyWriter:    pw,
+		SetTrailers:   setTrailers,
+		ContentLength: contentLength,
 	}
 
 	bodyHandle = hm.Bodies.Add(body)

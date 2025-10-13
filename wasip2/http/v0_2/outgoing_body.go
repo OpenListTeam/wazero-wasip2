@@ -36,7 +36,8 @@ func (i *outgoingBodyImpl) Write(_ context.Context, this OutgoingBody) witgo.Res
 		return witgo.Err[OutputStream, witgo.Unit](witgo.Unit{})
 	}
 
-	stream := manager_io.NewAsyncStreamForWriter(body.BodyWriter, manager_io.WriterWritten(&body.BytesWritten))
+	// Stream 由 outgoingBody 管理,所以去除Close
+	stream := manager_io.NewAsyncStreamForWriter(body.BodyWriter, manager_io.WriterWritten(&body.BytesWritten), manager_io.DontCloseWriter())
 	body.OutputStreamHandle = i.hm.Streams.Add(stream)
 	return witgo.Ok[OutputStream, witgo.Unit](body.OutputStreamHandle)
 }
@@ -54,16 +55,13 @@ func (i *outgoingBodyImpl) Finish(_ context.Context, this OutgoingBody, trailers
 	if !ok {
 		return witgo.Err[witgo.Unit, ErrorCode](ErrorCode{InternalError: witgo.SomePtr("invalid outgoing_body handle")})
 	}
+	defer body.BodyWriter.Close()
 
 	if body.SetTrailers != nil {
 		if err := body.SetTrailers(trailer); err != nil {
 			return witgo.Err[witgo.Unit, ErrorCode](mapGoErrToWasiHttpErr(err))
 		}
 	}
-
-	// 关闭 BodyWriter，这将向 PipeReader 发出 EOF 信号，表示 body 已经写完。
-	// 这也会确保所有在 AsyncWriteWrapper 缓冲区中的数据被刷出。
-	i.hm.Streams.Remove(body.OutputStreamHandle)
 
 	// 执行 Content-Length 校验
 	if body.ContentLength != nil {

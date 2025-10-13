@@ -72,5 +72,7 @@ func (i *incomingRequestImpl) Consume(this IncomingRequest) witgo.Result[Incomin
 	if !ok {
 		return witgo.Err[IncomingBody, witgo.Unit](witgo.Unit{})
 	}
+
+	// TODO
 	return witgo.Ok[IncomingBody, witgo.Unit](req.BodyHandle)
 }

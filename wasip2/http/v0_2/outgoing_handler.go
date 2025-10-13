@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	gohttp "net/http"
-	"net/url"
 	"time"
 
 	manager_http "github.com/foxxorcat/wazero-wasip2/manager/http"
@@ -57,8 +56,9 @@ func (i *outgoingHandlerImpl) getClient(opts *manager_http.RequestOptions) *goht
 	transport := gohttp.DefaultTransport.(*gohttp.Transport).Clone()
 
 	// 保留原始代码中的代理和 TLS 设置
-	p, _ := url.Parse("http://192.168.3.121:8888")
-	transport.Proxy = gohttp.ProxyURL(p)
+	// p, _ := url.Parse("http://192.168.3.121:8888")
+	// transport.Proxy = gohttp.ProxyURL(p)
+	transport.Proxy = gohttp.ProxyFromEnvironment
 	transport.TLSClientConfig.InsecureSkipVerify = true
 
 	// 根据配置设置超时（如果cfg为零值，则超时为0，表示不设限制）
@@ -104,6 +104,7 @@ func (i *outgoingHandlerImpl) Handle(
 	}
 
 	// 2. 将我们的内部 OutgoingRequest 结构转换为 Go 的标准 `http.Request`。
+	// req 的 Close 转移给 goReq 控制
 	goReq, err := i.buildGoRequest(req)
 	if err != nil {
 		return witgo.Err[FutureIncomingResponse, ErrorCode](ErrorCode{InternalError: witgo.SomePtr(err.Error())})
@@ -127,7 +128,9 @@ func (i *outgoingHandlerImpl) Handle(
 
 // executeRequest 在一个单独的 goroutine 中运行。
 func (i *outgoingHandlerImpl) executeRequest(client *gohttp.Client, goReq *gohttp.Request, future *manager_http.FutureIncomingResponse) {
-	defer future.Pollable.SetReady()
+	defer func() {
+		future.Pollable.SetReady()
+	}()
 
 	resp, err := client.Do(goReq)
 
@@ -160,7 +163,13 @@ func (i *outgoingHandlerImpl) buildGoRequest(req *manager_http.OutgoingRequest) 
 	if err != nil {
 		return nil, err
 	}
-	goReq.Header = req.Headers
+
+	// 这里如果直接赋值会导致小写User-Agent和大小共存
+	for k, vv := range req.Headers {
+		for _, v := range vv {
+			goReq.Header.Add(k, v)
+		}
+	}
 	goReq.Trailer = make(gohttp.Header)
 
 	req.Request = goReq

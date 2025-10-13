@@ -22,8 +22,7 @@ func (i *outgoingRequestImpl) Constructor(fields Fields) OutgoingRequest {
 	// 消耗掉资源
 	header, _ := i.hm.Fields.Pop(fields)
 	req := &manager_http.OutgoingRequest{
-		Headers:  header,
-		Trailers: make(manager_http.Fields),
+		Headers: header,
 	}
 	return i.hm.OutgoingRequests.Add(req)
 }
@@ -44,8 +43,8 @@ func (i *outgoingRequestImpl) Body(_ context.Context, this OutgoingRequest) witg
 	}
 
 	var contentLength *uint64
-	if cl, ok := req.Headers["Content-Length"]; ok && len(cl) > 0 {
-		if val, err := strconv.ParseUint(cl[0], 10, 64); err == nil {
+	if cl := req.Headers.Get("Content-Length"); len(cl) > 0 {
+		if val, err := strconv.ParseUint(cl, 10, 64); err == nil {
 			contentLength = &val
 		}
 	}

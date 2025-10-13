@@ -310,6 +310,7 @@ func (aww *AsyncWriteWrapper) BlockingFlush() error {
 
 // 新增: Flush 触发一次非阻塞的刷新。
 func (aww *AsyncWriteWrapper) Flush() error {
+	return aww.BlockingFlush()
 	aww.mutex.Lock()
 	defer aww.mutex.Unlock()
 	aww.cond.Signal() // 唤醒后台 goroutine

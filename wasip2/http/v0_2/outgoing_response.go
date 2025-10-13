@@ -65,8 +65,8 @@ func (i *outgoingResponseImpl) Body(this OutgoingResponse) witgo.Result[Outgoing
 	}
 
 	var contentLength *uint64
-	if cl, ok := resp.Headers["Content-Length"]; ok && len(cl) > 0 {
-		if val, err := strconv.ParseUint(cl[0], 10, 64); err == nil {
+	if cl := resp.Headers.Get("Content-Length"); len(cl) > 0 {
+		if val, err := strconv.ParseUint(cl, 10, 64); err == nil {
 			contentLength = &val
 		}
 	}

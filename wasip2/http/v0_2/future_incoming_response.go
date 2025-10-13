@@ -62,6 +62,9 @@ func (i *futureIncomingResponseImpl) Get(
 	} else {
 		responseHandle := i.hm.Responses.Add(&manager_http.IncomingResponse{
 			Response: future.Result.Response,
+
+			StatusCode: future.Result.Response.StatusCode,
+			Headers:    future.Result.Response.Header,
 		})
 		innerResult = witgo.Ok[IncomingResponse, ErrorCode](responseHandle)
 	}

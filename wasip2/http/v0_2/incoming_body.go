@@ -33,7 +33,8 @@ func (i *incomingBodyImpl) Stream(_ context.Context, this IncomingBody) witgo.Re
 		return witgo.Err[OutgoingBody, witgo.Unit](witgo.Unit{})
 	}
 
-	stream := manager_io.NewAsyncStreamForReader(body.Stream)
+	// Stream 和 IncomingBody 生命周期绑定，这里不Close
+	stream := manager_io.NewAsyncStreamForReader(body.Stream, manager_io.DontCloseReader())
 	body.StreamHandle = i.hm.Streams.Add(stream)
 	return witgo.Ok[InputStream, witgo.Unit](body.StreamHandle)
 }
@@ -47,14 +48,13 @@ func (i *incomingBodyImpl) Finish(this IncomingBody) FutureTrailers {
 		// 在 wazero 的 Go host function 中，panic 会被转换为 trap。
 		panic("invalid incoming-body handle")
 	}
+	defer body.Close()
 
 	// 为了兼容，这里直接清理资源不报错
 	if body.Consumed.CompareAndSwap(false, true) {
 		// 3. 根据 WIT 规范，如果流仍然存在，则触发panic。
 		// panic("trap: finishing incoming-body while its stream is still alive")
 	}
-
-	i.hm.Streams.Remove(body.StreamHandle)
 
 	future := &manager_http.FutureTrailers{
 		Pollable: manager_io.ReadyPollable,
