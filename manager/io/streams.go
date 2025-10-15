@@ -3,7 +3,7 @@ package io
 import (
 	"io"
 
-	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
+	witgo "github.com/OpenListTeam/wazero-wasip2/wit-go"
 )
 
 // Flusher 是一个接口，封装了 Flush 方法，用于将缓冲数据写入底层 writer。

@@ -6,8 +6,8 @@ import (
 	"context"
 	"net"
 
-	"github.com/foxxorcat/wazero-wasip2/manager/sockets"
-	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
+	"github.com/OpenListTeam/wazero-wasip2/manager/sockets"
+	witgo "github.com/OpenListTeam/wazero-wasip2/wit-go"
 )
 
 func (i *tcpImpl) DropTCPSocket(_ context.Context, handle TCPSocket) {

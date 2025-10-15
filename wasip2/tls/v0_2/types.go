@@ -1,7 +1,7 @@
 package v0_2
 
 import (
-	io_v0_2 "github.com/foxxorcat/wazero-wasip2/wasip2/io/v0_2"
+	io_v0_2 "github.com/OpenListTeam/wazero-wasip2/wasip2/io/v0_2"
 )
 
 // --- Imported Types ---

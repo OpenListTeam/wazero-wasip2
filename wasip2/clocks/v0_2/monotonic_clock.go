@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/foxxorcat/wazero-wasip2/manager/io"
+	"github.com/OpenListTeam/wazero-wasip2/manager/io"
 )
 
 // Monotonic clock zero value, initialized at package load time.

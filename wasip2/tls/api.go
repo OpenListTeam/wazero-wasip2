@@ -1,8 +1,8 @@
 package wasi_tls
 
 import (
-	"github.com/foxxorcat/wazero-wasip2/wasip2"
-	v0_2 "github.com/foxxorcat/wazero-wasip2/wasip2/tls/v0_2"
+	"github.com/OpenListTeam/wazero-wasip2/wasip2"
+	v0_2 "github.com/OpenListTeam/wazero-wasip2/wasip2/tls/v0_2"
 )
 
 // Module returns a configured wasi:tls module option.

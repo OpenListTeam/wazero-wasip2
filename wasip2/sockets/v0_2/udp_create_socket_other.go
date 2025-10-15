@@ -5,8 +5,8 @@ package v0_2
 import (
 	"context"
 
-	"github.com/foxxorcat/wazero-wasip2/manager/sockets"
-	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
+	"github.com/OpenListTeam/wazero-wasip2/manager/sockets"
+	witgo "github.com/OpenListTeam/wazero-wasip2/wit-go"
 )
 
 func (i *udpCreateSocketImpl) CreateUDPSocket(_ context.Context, addressFamily IPAddressFamily) witgo.Result[TCPSocket, ErrorCode] {

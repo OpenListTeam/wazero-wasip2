@@ -5,8 +5,8 @@ import (
 	"io"
 	"time"
 
-	manager_io "github.com/foxxorcat/wazero-wasip2/manager/io"
-	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
+	manager_io "github.com/OpenListTeam/wazero-wasip2/manager/io"
+	witgo "github.com/OpenListTeam/wazero-wasip2/wit-go"
 )
 
 type streamsImpl struct {

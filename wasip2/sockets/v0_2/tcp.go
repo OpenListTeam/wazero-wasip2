@@ -4,11 +4,11 @@ import (
 	"context"
 	"net"
 
-	manager_io "github.com/foxxorcat/wazero-wasip2/manager/io"
-	"github.com/foxxorcat/wazero-wasip2/manager/sockets"
-	"github.com/foxxorcat/wazero-wasip2/wasip2"
-	wasip2_io "github.com/foxxorcat/wazero-wasip2/wasip2/io/v0_2"
-	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
+	manager_io "github.com/OpenListTeam/wazero-wasip2/manager/io"
+	"github.com/OpenListTeam/wazero-wasip2/manager/sockets"
+	"github.com/OpenListTeam/wazero-wasip2/wasip2"
+	wasip2_io "github.com/OpenListTeam/wazero-wasip2/wasip2/io/v0_2"
+	witgo "github.com/OpenListTeam/wazero-wasip2/wit-go"
 )
 
 type tcpImpl struct {

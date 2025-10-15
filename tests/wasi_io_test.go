@@ -7,16 +7,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/foxxorcat/wazero-wasip2/wasip2"
+	"github.com/OpenListTeam/wazero-wasip2/wasip2"
 
-	manager_io "github.com/foxxorcat/wazero-wasip2/manager/io"
-	wasi_clocks "github.com/foxxorcat/wazero-wasip2/wasip2/clocks"
-	wasi_filesystem "github.com/foxxorcat/wazero-wasip2/wasip2/filesystem"
-	wasi_io "github.com/foxxorcat/wazero-wasip2/wasip2/io"
-	wasi_random "github.com/foxxorcat/wazero-wasip2/wasip2/random"
-	wasi_sockets "github.com/foxxorcat/wazero-wasip2/wasip2/sockets"
+	manager_io "github.com/OpenListTeam/wazero-wasip2/manager/io"
+	wasi_clocks "github.com/OpenListTeam/wazero-wasip2/wasip2/clocks"
+	wasi_filesystem "github.com/OpenListTeam/wazero-wasip2/wasip2/filesystem"
+	wasi_io "github.com/OpenListTeam/wazero-wasip2/wasip2/io"
+	wasi_random "github.com/OpenListTeam/wazero-wasip2/wasip2/random"
+	wasi_sockets "github.com/OpenListTeam/wazero-wasip2/wasip2/sockets"
 
-	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
+	witgo "github.com/OpenListTeam/wazero-wasip2/wit-go"
 
 	"github.com/stretchr/testify/require"
 	"github.com/tetratelabs/wazero"

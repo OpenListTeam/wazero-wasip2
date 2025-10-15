@@ -3,7 +3,7 @@ package sockets
 import (
 	"net"
 
-	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
+	witgo "github.com/OpenListTeam/wazero-wasip2/wit-go"
 )
 
 // IPAddressFamily 是一个版本无关的 IP 地址族枚举。

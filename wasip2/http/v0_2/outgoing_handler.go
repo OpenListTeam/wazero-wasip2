@@ -6,9 +6,9 @@ import (
 	gohttp "net/http"
 	"time"
 
-	manager_http "github.com/foxxorcat/wazero-wasip2/manager/http"
-	manager_io "github.com/foxxorcat/wazero-wasip2/manager/io"
-	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
+	manager_http "github.com/OpenListTeam/wazero-wasip2/manager/http"
+	manager_io "github.com/OpenListTeam/wazero-wasip2/manager/io"
+	witgo "github.com/OpenListTeam/wazero-wasip2/wit-go"
 
 	lru "github.com/hashicorp/golang-lru/v2"
 )

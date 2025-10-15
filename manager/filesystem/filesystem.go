@@ -4,7 +4,7 @@ import (
 	"io/fs"
 	"os"
 
-	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
+	witgo "github.com/OpenListTeam/wazero-wasip2/wit-go"
 )
 
 // Descriptor represents a file or directory descriptor.

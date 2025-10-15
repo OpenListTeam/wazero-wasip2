@@ -1,4 +1,4 @@
-module github.com/foxxorcat/wazero-wasip2
+module github.com/OpenListTeam/wazero-wasip2
 
 go 1.23.0
 

@@ -3,8 +3,8 @@ package v0_2
 import (
 	"context"
 
-	"github.com/foxxorcat/wazero-wasip2/manager/sockets"
-	"github.com/foxxorcat/wazero-wasip2/wasip2"
+	"github.com/OpenListTeam/wazero-wasip2/manager/sockets"
+	"github.com/OpenListTeam/wazero-wasip2/wasip2"
 )
 
 type networkImpl struct {

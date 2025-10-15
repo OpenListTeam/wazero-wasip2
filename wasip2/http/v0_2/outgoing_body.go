@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	manager_http "github.com/foxxorcat/wazero-wasip2/manager/http"
-	manager_io "github.com/foxxorcat/wazero-wasip2/manager/io"
-	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
+	manager_http "github.com/OpenListTeam/wazero-wasip2/manager/http"
+	manager_io "github.com/OpenListTeam/wazero-wasip2/manager/io"
+	witgo "github.com/OpenListTeam/wazero-wasip2/wit-go"
 )
 
 // outgoing 用于host端的资源

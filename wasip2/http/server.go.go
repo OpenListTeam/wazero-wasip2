@@ -8,10 +8,10 @@ import (
 	"net/http"
 	"strings"
 
-	manager_http "github.com/foxxorcat/wazero-wasip2/manager/http"
-	"github.com/foxxorcat/wazero-wasip2/wasip2"
-	v0_2 "github.com/foxxorcat/wazero-wasip2/wasip2/http/v0_2"
-	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
+	manager_http "github.com/OpenListTeam/wazero-wasip2/manager/http"
+	"github.com/OpenListTeam/wazero-wasip2/wasip2"
+	v0_2 "github.com/OpenListTeam/wazero-wasip2/wasip2/http/v0_2"
+	witgo "github.com/OpenListTeam/wazero-wasip2/wit-go"
 
 	"github.com/tetratelabs/wazero/api"
 )

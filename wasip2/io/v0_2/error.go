@@ -3,7 +3,7 @@ package v0_2
 import (
 	"context"
 
-	"github.com/foxxorcat/wazero-wasip2/manager/io"
+	"github.com/OpenListTeam/wazero-wasip2/manager/io"
 )
 
 // errorImpl 结构体持有 wasi:io/error 的具体实现逻辑。

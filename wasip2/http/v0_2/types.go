@@ -1,9 +1,9 @@
 package v0_2
 
 import (
-	wasip2_clocks "github.com/foxxorcat/wazero-wasip2/wasip2/clocks/v0_2"
-	wasip2_io "github.com/foxxorcat/wazero-wasip2/wasip2/io/v0_2"
-	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
+	wasip2_clocks "github.com/OpenListTeam/wazero-wasip2/wasip2/clocks/v0_2"
+	wasip2_io "github.com/OpenListTeam/wazero-wasip2/wasip2/io/v0_2"
+	witgo "github.com/OpenListTeam/wazero-wasip2/wit-go"
 )
 
 // 从 wasi:io 导入类型

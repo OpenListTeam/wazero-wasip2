@@ -3,11 +3,11 @@ package wasip2
 import (
 	"context"
 
-	"github.com/foxxorcat/wazero-wasip2/manager/filesystem"
-	"github.com/foxxorcat/wazero-wasip2/manager/http"
-	"github.com/foxxorcat/wazero-wasip2/manager/io"
-	"github.com/foxxorcat/wazero-wasip2/manager/sockets"
-	"github.com/foxxorcat/wazero-wasip2/manager/tls"
+	"github.com/OpenListTeam/wazero-wasip2/manager/filesystem"
+	"github.com/OpenListTeam/wazero-wasip2/manager/http"
+	"github.com/OpenListTeam/wazero-wasip2/manager/io"
+	"github.com/OpenListTeam/wazero-wasip2/manager/sockets"
+	"github.com/OpenListTeam/wazero-wasip2/manager/tls"
 
 	"github.com/tetratelabs/wazero"
 )

@@ -1,8 +1,8 @@
 package v0_2
 
 import (
-	manager_sockets "github.com/foxxorcat/wazero-wasip2/manager/sockets"
-	io_v0_2 "github.com/foxxorcat/wazero-wasip2/wasip2/io/v0_2"
+	manager_sockets "github.com/OpenListTeam/wazero-wasip2/manager/sockets"
+	io_v0_2 "github.com/OpenListTeam/wazero-wasip2/wasip2/io/v0_2"
 )
 
 // --- Imported Types ---

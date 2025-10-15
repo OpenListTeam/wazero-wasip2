@@ -6,8 +6,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	manager_io "github.com/foxxorcat/wazero-wasip2/manager/io"
-	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
+	manager_io "github.com/OpenListTeam/wazero-wasip2/manager/io"
+	witgo "github.com/OpenListTeam/wazero-wasip2/wit-go"
 )
 
 // Fields 代表 HTTP 头部或尾部。

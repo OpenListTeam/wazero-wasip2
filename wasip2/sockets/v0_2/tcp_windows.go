@@ -8,8 +8,8 @@ import (
 	"os"
 	"syscall"
 
-	"github.com/foxxorcat/wazero-wasip2/manager/sockets"
-	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
+	"github.com/OpenListTeam/wazero-wasip2/manager/sockets"
+	witgo "github.com/OpenListTeam/wazero-wasip2/wit-go"
 
 	"golang.org/x/sys/windows"
 )

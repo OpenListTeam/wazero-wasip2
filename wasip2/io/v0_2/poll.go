@@ -4,7 +4,7 @@ import (
 	"context"
 	"reflect"
 
-	"github.com/foxxorcat/wazero-wasip2/manager/io"
+	"github.com/OpenListTeam/wazero-wasip2/manager/io"
 )
 
 // pollImpl 结构体持有 wasi:io/poll 的具体实现逻辑。

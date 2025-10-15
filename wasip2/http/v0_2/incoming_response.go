@@ -3,8 +3,8 @@ package v0_2
 import (
 	"context"
 
-	manager_http "github.com/foxxorcat/wazero-wasip2/manager/http"
-	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
+	manager_http "github.com/OpenListTeam/wazero-wasip2/manager/http"
+	witgo "github.com/OpenListTeam/wazero-wasip2/wit-go"
 )
 
 type incomingResponseImpl struct {

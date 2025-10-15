@@ -7,10 +7,10 @@ import (
 	"net"
 	"time"
 
-	manager_io "github.com/foxxorcat/wazero-wasip2/manager/io"
-	manager_tls "github.com/foxxorcat/wazero-wasip2/manager/tls"
-	"github.com/foxxorcat/wazero-wasip2/wasip2"
-	witgo "github.com/foxxorcat/wazero-wasip2/wit-go"
+	manager_io "github.com/OpenListTeam/wazero-wasip2/manager/io"
+	manager_tls "github.com/OpenListTeam/wazero-wasip2/manager/tls"
+	"github.com/OpenListTeam/wazero-wasip2/wasip2"
+	witgo "github.com/OpenListTeam/wazero-wasip2/wit-go"
 
 	"github.com/tetratelabs/wazero"
 )
