@@ -330,13 +330,9 @@ func (aww *AsyncWriteWrapper) BlockingFlush() error {
 	return aww.err
 }
 
-// 新增: Flush 触发一次非阻塞的刷新。
+// Flush triggers a blocking flush to ensure all buffered data is written
 func (aww *AsyncWriteWrapper) Flush() error {
 	return aww.BlockingFlush()
-	aww.mutex.Lock()
-	defer aww.mutex.Unlock()
-	aww.cond.Signal() // 唤醒后台 goroutine
-	return nil
 }
 
 func (aww *AsyncWriteWrapper) CheckWrite() uint64 {
