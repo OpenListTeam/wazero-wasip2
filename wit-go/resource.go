@@ -111,3 +111,19 @@ func (m *ResourceManager[T]) Range(f func(handle uint32, resource T) bool) {
 		}
 	}
 }
+
+// CloseAll removes all resources and calls destructor on each if provided
+// This is useful for cleanup when shutting down a Host instance
+func (m *ResourceManager[T]) CloseAll() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.destructor != nil {
+		for _, resource := range m.handles {
+			m.destructor(resource)
+		}
+	}
+
+	// Clear the map
+	m.handles = make(map[uint32]T)
+}

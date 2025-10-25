@@ -237,10 +237,14 @@ func NewHTTPManager(sm *manager_io.StreamManager, poll *manager_io.PollManager) 
 		FutureTrailers: witgo.NewResourceManager[*FutureTrailers](nil),
 
 		IncomingRequests: witgo.NewResourceManager[*IncomingRequest](func(resource *IncomingRequest) {
-			resource.Body.Close()
+			if resource != nil && resource.Body != nil {
+				resource.Body.Close()
+			}
 		}),
 		ResponseOutparams: witgo.NewResourceManager[*ResponseOutparam](func(resource *ResponseOutparam) {
-			close(resource.ResultChan)
+			if resource != nil && resource.ResultChan != nil {
+				close(resource.ResultChan)
+			}
 		}),
 		OutgoingResponses: witgo.NewResourceManager[*OutgoingResponse](func(resource *OutgoingResponse) {
 			resource.Close()
