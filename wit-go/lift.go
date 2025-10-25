@@ -171,10 +171,12 @@ func liftString(ctx context.Context, mem api.Memory, alloc *GuestAllocator, s st
 		return fmt.Errorf("memory write failed for string content at ptr %d", contentPtr)
 	}
 
-	buf := make([]byte, 8)
+	// Reuse buffer from pool for header
+	buf := GetBuffer(8)
+	defer PutBuffer(buf)
 	binary.LittleEndian.PutUint32(buf[0:4], contentPtr)
 	binary.LittleEndian.PutUint32(buf[4:8], uint32(len(s)))
-	if !mem.Write(ptr, buf) {
+	if !mem.Write(ptr, buf[:8]) {
 		return fmt.Errorf("memory write failed for string header at ptr %d", ptr)
 	}
 	return nil
@@ -208,10 +210,12 @@ func liftSlice(ctx context.Context, mem api.Memory, alloc *GuestAllocator, val r
 		}
 	}
 
-	buf := make([]byte, 8)
+	// Reuse buffer from pool for slice header
+	buf := GetBuffer(8)
+	defer PutBuffer(buf)
 	binary.LittleEndian.PutUint32(buf[0:4], contentPtr)
 	binary.LittleEndian.PutUint32(buf[4:8], uint32(sliceLen))
-	return check(mem.Write(ptr, buf))
+	return check(mem.Write(ptr, buf[:8]))
 }
 
 func liftArray(ctx context.Context, mem api.Memory, alloc *GuestAllocator, val reflect.Value, ptr uint32) error {
