@@ -75,6 +75,25 @@ type TCPSocket struct {
 	ConnectResult chan ConnectResult
 }
 
+// Close releases all resources associated with the TCPSocket
+func (s *TCPSocket) Close() error {
+	var err error
+	if s.Listener != nil {
+		err = s.Listener.Close()
+	}
+	if s.Conn != nil {
+		if closeErr := s.Conn.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}
+	if s.ConnectResult != nil {
+		close(s.ConnectResult)
+		s.ConnectResult = nil
+	}
+	s.State = TCPStateClosed
+	return err
+}
+
 // TCPState represents the state of a TCP socket as defined in the WIT world.
 type TCPState uint8
 
@@ -100,6 +119,20 @@ type UDPSocket struct {
 	Writer *AsyncUDPWriter
 }
 
+// Close releases all resources associated with the UDPSocket
+func (s *UDPSocket) Close() error {
+	if s.Reader != nil {
+		s.Reader.Close()
+	}
+	if s.Writer != nil {
+		s.Writer.Close()
+	}
+	if s.Conn != nil {
+		return s.Conn.Close()
+	}
+	return nil
+}
+
 // ResolveAddressStreamState 保存了域名解析操作的状态。
 type ResolveAddressStreamState struct {
 	// 存储解析出的 IP 地址列表。
@@ -123,11 +156,23 @@ func NewNetworkManager() *NetworkManager {
 	return witgo.NewResourceManager[*Network](nil)
 }
 func NewTCPSocketManager() *TCPSocketManager {
-	return witgo.NewResourceManager[*TCPSocket](nil)
+	return witgo.NewResourceManager[*TCPSocket](func(socket *TCPSocket) {
+		if socket != nil {
+			socket.Close()
+		}
+	})
 }
 func NewUDPSocketManager() *UDPSocketManager {
-	return witgo.NewResourceManager[*UDPSocket](nil)
+	return witgo.NewResourceManager[*UDPSocket](func(socket *UDPSocket) {
+		if socket != nil {
+			socket.Close()
+		}
+	})
 }
 func NewResolveAddressStreamManager() *ResolveAddressStreamManager {
-	return witgo.NewResourceManager[*ResolveAddressStreamState](nil)
+	return witgo.NewResourceManager[*ResolveAddressStreamState](func(state *ResolveAddressStreamState) {
+		if state != nil && state.Done != nil {
+			close(state.Done)
+		}
+	})
 }

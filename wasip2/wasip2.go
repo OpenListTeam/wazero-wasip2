@@ -137,3 +137,12 @@ func (h *Host) ResolveAddressStreamManager() *sockets.ResolveAddressStreamManage
 func (h *Host) TLSManager() *tls.TLSManager {
 	return h.tlsManager
 }
+
+// Close releases all resources managed by this Host instance
+// This should be called when the Host is no longer needed to prevent resource leaks
+func (h *Host) Close() error {
+	// Note: ResourceManager doesn't provide a cleanup method yet
+	// Consider adding CloseAll() method to ResourceManager in the future
+	// For now, we rely on destructor being called when resources are removed
+	return nil
+}
