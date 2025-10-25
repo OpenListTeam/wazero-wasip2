@@ -9,9 +9,8 @@ import (
 
 // Buffer size constants for different use cases
 const (
-	defaultBufferSize  = 32768  // 32KB - better for typical operations
-	largeBufferSize    = 131072 // 128KB - for large file operations
-	maxBufferGrowth    = 2097152 // 2MB - maximum buffer growth limit
+	defaultBufferSize = 32768   // 32KB - better for typical operations
+	maxBufferGrowth   = 2097152 // 2MB - maximum buffer growth limit
 )
 
 // --- 优化后的异步读取封装器 ---

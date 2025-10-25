@@ -7,9 +7,7 @@ import (
 
 // Optimized buffer sizes for different transfer scenarios
 const (
-	MinBufferSize    = 8192    // 8KB minimum
-	MaxBufferSize    = 1048576 // 1MB maximum
-	DefaultChunkSize = 65536   // 64KB default chunk
+	MaxBufferSize = 1048576 // 1MB maximum buffer size for transfer pool
 )
 
 // Global pool for large transfer buffers
