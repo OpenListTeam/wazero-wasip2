@@ -73,7 +73,15 @@ type TCPSocket struct {
 	// ConnectResult 用于异步 connect 操作。
 	// 当 start-connect 被调用时，一个 goroutine 会开始连接，
 	// 并将结果（一个 ConnectResult）发送到这个 channel。
+	// Channel is managed by background goroutine and closed when done.
 	ConnectResult chan ConnectResult
+	
+	// ConnectCancel cancels the background connect goroutine.
+	// Must be called before ConnectResult becomes invalid.
+	ConnectCancel func()
+	
+	// Ensures ConnectResult channel is closed only once by background goroutine.
+	connectResultCloseOnce sync.Once
 }
 
 // Close releases all resources associated with the TCPSocket
@@ -87,17 +95,15 @@ func (s *TCPSocket) Close() error {
 			err = closeErr
 		}
 	}
-	// Safely close ConnectResult channel: drain it first to prevent panic
-	// when background goroutines try to send after close
-	if s.ConnectResult != nil {
-		// Non-blocking drain of any pending result
-		select {
-		case <-s.ConnectResult:
-		default:
-		}
-		close(s.ConnectResult)
-		s.ConnectResult = nil
+	// Cancel background connect goroutine if it exists.
+	// The goroutine is responsible for closing ConnectResult channel.
+	if s.ConnectCancel != nil {
+		s.ConnectCancel()
+		s.ConnectCancel = nil
 	}
+	// Mark channel as invalid without closing it here.
+	// Background goroutine will close it after draining.
+	s.ConnectResult = nil
 	s.State = TCPStateClosed
 	return err
 }

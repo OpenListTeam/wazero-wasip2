@@ -38,11 +38,40 @@ func (i *tcpImpl) StartConnect(ctx context.Context, this TCPSocket, network Netw
 	sock.State = sockets.TCPStateConnecting
 	sock.ConnectResult = make(chan sockets.ConnectResult, 1) // 创建带缓冲的 channel
 
+	// Create cancellable context for the background connect operation
+	connectCtx, cancel := context.WithCancel(context.Background())
+	sock.ConnectCancel = cancel
+
 	// 在后台 goroutine 中执行阻塞的 Dial 操作
 	go func() {
-		// net.DialTCP 会处理隐式绑定（如果套接字未绑定）
-		conn, dialErr := net.DialTCP("tcp", nil, addr)
-		sock.ConnectResult <- sockets.ConnectResult{Conn: conn, Err: dialErr}
+		resultChan := sock.ConnectResult
+		closeOnce := &sock.connectResultCloseOnce
+		
+		// Use DialContext instead of DialTCP to support cancellation
+		var d net.Dialer
+		conn, dialErr := d.DialContext(connectCtx, "tcp", addr.String())
+		
+		var tcpConn *net.TCPConn
+		if conn != nil {
+			tcpConn = conn.(*net.TCPConn)
+		}
+		
+		result := sockets.ConnectResult{Conn: tcpConn, Err: dialErr}
+		
+		// Try to send result; if context cancelled or channel full, skip
+		select {
+		case resultChan <- result:
+		case <-connectCtx.Done():
+			// Connection was cancelled, close any opened connection
+			if tcpConn != nil {
+				tcpConn.Close()
+			}
+		}
+		
+		// Background goroutine is responsible for closing the channel
+		closeOnce.Do(func() {
+			close(resultChan)
+		})
 	}()
 
 	return witgo.Ok[witgo.Unit, ErrorCode](witgo.Unit{})
@@ -58,12 +87,30 @@ func (i *tcpImpl) FinishConnect(ctx context.Context, this TCPSocket) witgo.Resul
 		return witgo.Err[witgo.Tuple[wasip2_io.InputStream, wasip2_io.OutputStream], ErrorCode](ErrorCodeNotInProgress)
 	}
 
+	// Check if socket was closed (ConnectResult set to nil)
+	if sock.ConnectResult == nil {
+		sock.State = sockets.TCPStateClosed
+		return witgo.Err[witgo.Tuple[wasip2_io.InputStream, wasip2_io.OutputStream], ErrorCode](ErrorCodeConnectionAborted)
+	}
+
 	// 非阻塞地检查连接结果
 	select {
-	case result := <-sock.ConnectResult:
+	case result, ok := <-sock.ConnectResult:
+		// Check if channel was closed (ok == false) without sending a valid result
+		if !ok {
+			sock.State = sockets.TCPStateClosed
+			return witgo.Err[witgo.Tuple[wasip2_io.InputStream, wasip2_io.OutputStream], ErrorCode](ErrorCodeConnectionAborted)
+		}
+		
 		if result.Err != nil {
 			sock.State = sockets.TCPStateClosed
 			return witgo.Err[witgo.Tuple[wasip2_io.InputStream, wasip2_io.OutputStream], ErrorCode](mapOsError(result.Err))
+		}
+
+		// Ensure we have a valid connection (prevent nil Conn from being wrapped)
+		if result.Conn == nil {
+			sock.State = sockets.TCPStateClosed
+			return witgo.Err[witgo.Tuple[wasip2_io.InputStream, wasip2_io.OutputStream], ErrorCode](ErrorCodeConnectionAborted)
 		}
 
 		// 连接成功
@@ -310,14 +357,28 @@ func (i *tcpImpl) Subscribe(pctx context.Context, this TCPSocket) wasip2_io.Poll
 
 		// This goroutine waits for the connection result to appear on the channel.
 		go func() {
+			// Capture channel at goroutine start to avoid race with Close
+			resultChan := sock.ConnectResult
+			if resultChan == nil {
+				// Socket was already closed
+				p.SetReady()
+				return
+			}
+			
 			select {
 			// Wait for the result from the connection goroutine.
-			case res := <-sock.ConnectResult:
-				// The connection attempt is complete. Signal the pollable.
+			case res, ok := <-resultChan:
+				// The connection attempt is complete or channel closed.
 				p.SetReady()
-				// Put the result back onto the buffered channel so `finish-connect` can consume it.
-				// This is a delicate operation, relying on the channel being buffered and having a single final consumer.
-				sock.ConnectResult <- res
+				// If we received a valid result, put it back for finish-connect.
+				// Only put back if channel is still open and result is valid.
+				if ok && (res.Conn != nil || res.Err != nil) {
+					// Non-blocking send: if channel is full or closed, skip
+					select {
+					case resultChan <- res:
+					default:
+					}
+				}
 			case <-ctx.Done():
 				// If the context is cancelled, also unblock the poll.
 				p.SetReady()
