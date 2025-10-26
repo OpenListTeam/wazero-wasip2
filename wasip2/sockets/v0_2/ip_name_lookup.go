@@ -30,13 +30,13 @@ func (i *ipNameLookupImpl) ResolveAddresses(ctx context.Context, network Network
 	if ip := net.ParseIP(name); ip != nil {
 		// 如果成功，直接设置结果，无需异步查询
 		state.Addresses = []net.IP{ip}
-		close(state.Done) // 标记为已完成
+		state.CloseDone() // 标记为已完成，使用 CloseDone 确保安全关闭
 		return witgo.Ok[ResolveAddressStream, ErrorCode](handle)
 	}
 
 	// 如果不是 IP 地址，则在后台 goroutine 中执行 DNS 查询
 	go func() {
-		defer close(state.Done)
+		defer state.CloseDone()
 		// 使用带 context 的 Resolver 以支持取消
 		resolver := net.Resolver{}
 		addrs, err := resolver.LookupIPAddr(context.Background(), name)

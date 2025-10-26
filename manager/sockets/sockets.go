@@ -2,6 +2,7 @@ package sockets
 
 import (
 	"net"
+	"sync"
 
 	witgo "github.com/OpenListTeam/wazero-wasip2/wit-go"
 )
@@ -150,6 +151,17 @@ type ResolveAddressStreamState struct {
 	Error error
 	// 一个 channel，当后台解析任务完成时，它会被关闭。
 	Done chan struct{}
+	// Ensure Done channel is only closed once
+	closeOnce sync.Once
+}
+
+// CloseDone safely closes the Done channel using sync.Once
+func (s *ResolveAddressStreamState) CloseDone() {
+	s.closeOnce.Do(func() {
+		if s.Done != nil {
+			close(s.Done)
+		}
+	})
 }
 
 // --- Resource Managers ---
@@ -178,8 +190,8 @@ func NewUDPSocketManager() *UDPSocketManager {
 }
 func NewResolveAddressStreamManager() *ResolveAddressStreamManager {
 	return witgo.NewResourceManager[*ResolveAddressStreamState](func(state *ResolveAddressStreamState) {
-		if state != nil && state.Done != nil {
-			close(state.Done)
+		if state != nil {
+			state.CloseDone()
 		}
 	})
 }
