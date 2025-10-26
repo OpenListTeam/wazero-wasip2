@@ -356,7 +356,7 @@ func testGuestScalar[T any](t *testing.T, host *Host, name string, values ...T) 
 	t.Run("guest-"+name, func(t *testing.T) {
 		for _, value := range values {
 			var result T
-			err := host.Call(t.Context(), "test-"+name, &result, value)
+			err := host.Call(context.Background(), "test-"+name, &result, value)
 			require.NoError(t, err)
 			assert.Equal(t, value, result)
 		}
@@ -365,7 +365,7 @@ func testGuestScalar[T any](t *testing.T, host *Host, name string, values ...T) 
 	t.Run("guest-option-"+name, func(t *testing.T) {
 		for _, value := range values {
 			var result Option[T]
-			err := host.Call(t.Context(), "test-option-"+name, &result, Some(value))
+			err := host.Call(context.Background(), "test-option-"+name, &result, Some(value))
 			require.NoError(t, err)
 			assert.Equal(t, value, *result.Some)
 		}
@@ -373,8 +373,8 @@ func testGuestScalar[T any](t *testing.T, host *Host, name string, values ...T) 
 
 	t.Run("guest-result-"+name, func(t *testing.T) {
 		for _, value := range values {
-			var result Result[T, Unit]
-			err := host.Call(t.Context(), "test-result-"+name, &result, Ok[T, Unit](value))
+			var result Result[T, string]
+			err := host.Call(context.Background(), "test-result-"+name, &result, Ok[T, string](value))
 			require.NoError(t, err)
 			assert.Equal(t, value, *result.Ok)
 		}
