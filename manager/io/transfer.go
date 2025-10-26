@@ -14,28 +14,28 @@ const (
 var transferBufferPool = sync.Pool{
 	New: func() interface{} {
 		buf := make([]byte, MaxBufferSize)
-		return &buf
+		return buf
 	},
 }
 
 // GetTransferBuffer obtains a buffer from the pool
-func GetTransferBuffer() *[]byte {
-	return transferBufferPool.Get().(*[]byte)
+func GetTransferBuffer() []byte {
+	return transferBufferPool.Get().([]byte)
 }
 
 // PutTransferBuffer returns a buffer to the pool
-func PutTransferBuffer(buf *[]byte) {
-	if buf != nil && len(*buf) == MaxBufferSize {
+func PutTransferBuffer(buf []byte) {
+	if len(buf) == MaxBufferSize {
 		transferBufferPool.Put(buf)
 	}
 }
 
 // OptimizedCopy performs an optimized copy operation with buffer pooling
 func OptimizedCopy(dst io.Writer, src io.Reader) (written int64, err error) {
-	bufPtr := GetTransferBuffer()
-	defer PutTransferBuffer(bufPtr)
+	buf := GetTransferBuffer()
+	defer PutTransferBuffer(buf)
 	
-	return io.CopyBuffer(dst, src, *bufPtr)
+	return io.CopyBuffer(dst, src, buf)
 }
 
 // AdaptiveBuffer dynamically adjusts buffer size based on throughput
