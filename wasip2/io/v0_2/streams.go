@@ -263,7 +263,19 @@ func (i *streamsImpl) Flush(_ context.Context, this OutputStream) witgo.Result[w
 }
 
 func (i *streamsImpl) BlockingFlush(ctx context.Context, this OutputStream) witgo.Result[witgo.Unit, StreamError] {
-	return i.Flush(ctx, this)
+	s, ok := i.sm.Get(this)
+	if !ok || s.Writer == nil {
+		return witgo.Err[witgo.Unit, StreamError](StreamError{Closed: &witgo.Unit{}})
+	}
+
+	if s.Flusher != nil {
+		if err := s.Flusher.BlockingFlush(); err != nil {
+			errHandle := i.em.Add(err)
+			return witgo.Err[witgo.Unit, StreamError](StreamError{LastOperationFailed: &errHandle})
+		}
+	}
+
+	return witgo.Ok[witgo.Unit, StreamError](witgo.Unit{})
 }
 
 func (i *streamsImpl) SubscribeToOutputStream(_ context.Context, this OutputStream) Pollable {
