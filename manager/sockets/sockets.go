@@ -95,15 +95,19 @@ func (s *TCPSocket) Close() error {
 			err = closeErr
 		}
 	}
-	// Cancel background connect goroutine if it exists.
-	// The goroutine is responsible for closing ConnectResult channel.
+	// Cancel background connect goroutine if it exists
 	if s.ConnectCancel != nil {
 		s.ConnectCancel()
 		s.ConnectCancel = nil
 	}
-	// Mark channel as invalid without closing it here.
-	// Background goroutine will close it after draining.
-	s.ConnectResult = nil
+	// Close ConnectResult channel using sync.Once for safety
+	// This must happen AFTER cancel to ensure goroutine stops sending
+	if s.ConnectResult != nil {
+		s.connectResultCloseOnce.Do(func() {
+			close(s.ConnectResult)
+		})
+		s.ConnectResult = nil
+	}
 	s.State = TCPStateClosed
 	return err
 }
