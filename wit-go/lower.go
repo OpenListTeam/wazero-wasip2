@@ -211,11 +211,7 @@ func read(ctx context.Context, mem api.Memory, ptr uint32, val reflect.Value, la
 }
 
 func lowerString(mem api.Memory, ptr uint32) (string, error) {
-	// Reuse buffer from pool for reading header
-	buf := GetBuffer(8)
-	defer PutBuffer(buf)
-	
-	ok := mem.Read(ptr, buf[:8])
+	buf, ok := mem.Read(ptr, 8)
 	if !ok {
 		return "", fmt.Errorf("failed to read string ptr/len at ptr %d", ptr)
 	}
@@ -225,11 +221,7 @@ func lowerString(mem api.Memory, ptr uint32) (string, error) {
 }
 
 func lowerSlice(ctx context.Context, mem api.Memory, ptr uint32, val reflect.Value) error {
-	// Reuse buffer from pool for reading slice header
-	buf := GetBuffer(8)
-	defer PutBuffer(buf)
-	
-	ok := mem.Read(ptr, buf[:8])
+	buf, ok := mem.Read(ptr, 8)
 	if !ok {
 		return fmt.Errorf("failed to read slice ptr/len at ptr %d", ptr)
 	}
