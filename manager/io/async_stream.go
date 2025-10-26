@@ -330,9 +330,13 @@ func (aww *AsyncWriteWrapper) BlockingFlush() error {
 	return aww.err
 }
 
-// Flush triggers a blocking flush to ensure all buffered data is written
+// Flush triggers a non-blocking flush signal to the background writer
+// According to WASI spec, flush should be async. Use BlockingFlush for synchronous behavior.
 func (aww *AsyncWriteWrapper) Flush() error {
-	return aww.BlockingFlush()
+	aww.mutex.Lock()
+	defer aww.mutex.Unlock()
+	aww.cond.Signal() // Wake up background goroutine
+	return nil
 }
 
 func (aww *AsyncWriteWrapper) CheckWrite() uint64 {

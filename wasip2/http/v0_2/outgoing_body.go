@@ -61,7 +61,7 @@ func (i *outgoingBodyImpl) Finish(_ context.Context, this OutgoingBody, trailers
 	// This ensures all buffered data is written to the underlying pipe
 	if body.OutputStreamHandle != 0 {
 		if stream, ok := i.hm.Streams.Get(body.OutputStreamHandle); ok && stream.Flusher != nil {
-			if err := stream.Flusher.Flush(); err != nil {
+			if err := stream.Flusher.BlockingFlush(); err != nil {
 				return witgo.Err[witgo.Unit, ErrorCode](mapGoErrToWasiHttpErr(err))
 			}
 		}
