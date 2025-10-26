@@ -86,7 +86,14 @@ func (s *TCPSocket) Close() error {
 			err = closeErr
 		}
 	}
+	// Safely close ConnectResult channel: drain it first to prevent panic
+	// when background goroutines try to send after close
 	if s.ConnectResult != nil {
+		// Non-blocking drain of any pending result
+		select {
+		case <-s.ConnectResult:
+		default:
+		}
 		close(s.ConnectResult)
 		s.ConnectResult = nil
 	}
