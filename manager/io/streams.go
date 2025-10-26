@@ -6,9 +6,12 @@ import (
 	witgo "github.com/OpenListTeam/wazero-wasip2/wit-go"
 )
 
-// Flusher 是一个接口，封装了 Flush 方法，用于将缓冲数据写入底层 writer。
+// Flusher is an interface that wraps flush methods for buffered writers.
+// Flush performs non-blocking flush per WASI spec.
+// BlockingFlush blocks until all buffered data is written.
 type Flusher interface {
 	Flush() error
+	BlockingFlush() error
 }
 
 type CheckWriter interface {
