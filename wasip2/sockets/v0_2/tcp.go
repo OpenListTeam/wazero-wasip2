@@ -44,6 +44,9 @@ func (i *tcpImpl) StartConnect(ctx context.Context, this TCPSocket, network Netw
 
 	// 在后台 goroutine 中执行阻塞的 Dial 操作
 	go func() {
+		// Capture sock reference to safely access it
+		socketRef := sock
+		
 		// Use DialContext instead of DialTCP to support cancellation
 		var d net.Dialer
 		conn, dialErr := d.DialContext(connectCtx, "tcp", addr.String())
@@ -55,12 +58,19 @@ func (i *tcpImpl) StartConnect(ctx context.Context, this TCPSocket, network Netw
 		
 		result := sockets.ConnectResult{Conn: tcpConn, Err: dialErr}
 		
-		// Try to send result; if context cancelled or channel invalid, skip
-		if sock.ConnectResult != nil {
+		// Check if socket was closed (ConnectResult set to nil) before sending
+		// Use non-blocking select to prevent panic on closed channel
+		if socketRef.ConnectResult != nil {
 			select {
-			case sock.ConnectResult <- result:
+			case socketRef.ConnectResult <- result:
+				// Successfully sent result
 			case <-connectCtx.Done():
-				// Connection was cancelled, close any opened connection
+				// Context cancelled, close any opened connection
+				if tcpConn != nil {
+					tcpConn.Close()
+				}
+			default:
+				// Channel was closed or buffer full, clean up connection
 				if tcpConn != nil {
 					tcpConn.Close()
 				}
@@ -70,8 +80,7 @@ func (i *tcpImpl) StartConnect(ctx context.Context, this TCPSocket, network Netw
 			tcpConn.Close()
 		}
 		
-		// Do NOT close channel here - it's needed for Subscribe re-enqueue
-		// Channel will be closed by TCPSocket.Close when truly done
+		// Do NOT close channel here - it's managed by TCPSocket.Close
 	}()
 
 	return witgo.Ok[witgo.Unit, ErrorCode](witgo.Unit{})
