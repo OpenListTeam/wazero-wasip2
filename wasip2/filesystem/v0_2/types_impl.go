@@ -505,3 +505,7 @@ type OsFileFlusher struct {
 func (f *OsFileFlusher) Flush() error {
 	return f.w.Sync()
 }
+
+func (f *OsFileFlusher) BlockingFlush() error {
+	return f.w.Sync()
+}
