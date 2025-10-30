@@ -204,12 +204,15 @@ func (i *streamsImpl) CheckWrite(_ context.Context, this OutputStream) witgo.Res
 func (i *streamsImpl) Write(_ context.Context, this OutputStream, contents []byte) witgo.Result[witgo.Unit, StreamError] {
 	s, ok := i.sm.Get(this)
 	if !ok || s.Writer == nil {
-		return witgo.Err[witgo.Unit, StreamError](StreamError{Closed: &witgo.Unit{}})
+		return witgo.Err[witgo.Unit](StreamError{Closed: &witgo.Unit{}})
 	}
-	_, err := s.Writer.Write(contents)
-	if err != nil {
-		errHandle := i.em.Add(err)
-		return witgo.Err[witgo.Unit, StreamError](StreamError{LastOperationFailed: &errHandle})
+	for len(contents) > 0 {
+		n, err := s.Writer.Write(contents)
+		if err != nil {
+			errHandle := i.em.Add(err)
+			return witgo.Err[witgo.Unit](StreamError{LastOperationFailed: &errHandle})
+		}
+		contents = contents[n:]
 	}
 	return witgo.Ok[witgo.Unit, StreamError](witgo.Unit{})
 }
@@ -217,33 +220,52 @@ func (i *streamsImpl) Write(_ context.Context, this OutputStream, contents []byt
 func (i *streamsImpl) BlockingWriteAndFlush(ctx context.Context, this OutputStream, contents []byte) witgo.Result[witgo.Unit, StreamError] {
 	s, ok := i.sm.Get(this)
 	if !ok || s.Writer == nil {
-		return witgo.Err[witgo.Unit, StreamError](StreamError{Closed: &witgo.Unit{}})
+		return witgo.Err[witgo.Unit](StreamError{Closed: &witgo.Unit{}})
 	}
 
-	writeSize := uint64(4096)
-	for len(contents) > 0 {
+	writeSize := uint64(len(contents))
+	if writeSize > 4096 {
+		panic("WASI: blocking-write-and-flush called with contents length > 4096. Guest must handle chunking.")
+	}
+	for writeSize > 0 {
 		if s.CheckWriter != nil {
-			writeSize = s.CheckWriter.CheckWrite()
-		}
-		// 如果没有可写入空间，那么阻塞等待IO就绪
-		if writeSize == 0 {
-			if s.OnSubscribe != nil {
-				if pollable := s.OnSubscribe(); pollable != nil {
-					pollable.Block()
+			for {
+				checkSize := s.CheckWriter.CheckWrite()
+				if checkSize > 0 {
+					if checkSize < writeSize {
+						writeSize = checkSize
+					}
+					break
+				}
+				if s.OnSubscribe != nil {
+					if pollable := s.OnSubscribe(); pollable != nil {
+						pollable.Block()
+					}
 					continue
 				}
+				select {
+				case <-ctx.Done():
+					errHandle := i.em.Add(ctx.Err())
+					return witgo.Err[witgo.Unit](StreamError{LastOperationFailed: &errHandle})
+				case <-time.After(20 * time.Millisecond):
+				}
 			}
-			time.Sleep(time.Millisecond * 20)
 		}
-
-		n, err := s.Writer.Write(contents[:min(writeSize, uint64(len(contents)))])
+		n, err := s.Writer.Write(contents[:writeSize])
 		if err != nil {
 			errHandle := i.em.Add(err)
-			return witgo.Err[witgo.Unit, StreamError](StreamError{LastOperationFailed: &errHandle})
+			return witgo.Err[witgo.Unit](StreamError{LastOperationFailed: &errHandle})
+		}
+		if s.Flusher != nil {
+			if err := s.Flusher.BlockingFlush(); err != nil {
+				errHandle := i.em.Add(err)
+				return witgo.Err[witgo.Unit](StreamError{LastOperationFailed: &errHandle})
+			}
 		}
 		contents = contents[n:]
+		writeSize = uint64(len(contents))
 	}
-	return i.BlockingFlush(ctx, this)
+	return witgo.Ok[witgo.Unit, StreamError](witgo.Unit{})
 }
 
 func (i *streamsImpl) Flush(_ context.Context, this OutputStream) witgo.Result[witgo.Unit, StreamError] {
