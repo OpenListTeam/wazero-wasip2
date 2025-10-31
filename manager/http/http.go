@@ -154,7 +154,7 @@ func (o *OutgoingBody) Close() error {
 
 // FutureTrailers 代表一个尚未到达的 HTTP Trailers。
 type FutureTrailers struct {
-	Pollable *manager_io.ChannelPollable
+	Pollable manager_io.IPollable
 	Result   ResultTrailers
 	Consumed atomic.Bool
 }
