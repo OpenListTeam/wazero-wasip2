@@ -1,6 +1,7 @@
 package sockets
 
 import (
+	"errors"
 	"net"
 	"sync"
 
@@ -80,48 +81,36 @@ type TCPSocket struct {
 	// Must be called before ConnectResult becomes invalid.
 	ConnectCancel func()
 
-	// Ensures ConnectResult channel is closed only once by background goroutine.
-	connectResultCloseOnce sync.Once
+	// Ensure Done channel is only closed once
+	closeOnce sync.Once
 }
 
 // Close releases all resources associated with the TCPSocket
 func (s *TCPSocket) Close() error {
-	if s.Fd != 0 {
-		CloseFd(s.Fd)
-	}
 	var err error
-	if s.Listener != nil {
-		err = s.Listener.Close()
-	}
-	if s.Conn != nil {
-		if closeErr := s.Conn.Close(); closeErr != nil && err == nil {
-			err = closeErr
+	s.closeOnce.Do(func() {
+		if s.Fd != 0 {
+			CloseFd(s.Fd)
 		}
-	}
+		if s.Listener != nil {
+			err = s.Listener.Close()
+		}
+		if s.Conn != nil {
+			if closeErr := s.Conn.Close(); closeErr != nil && err == nil {
+				err = errors.Join(err, closeErr)
+			}
+		}
 
-	// Atomically swap ConnectResult to nil to prevent goroutine from sending
-	// This must happen BEFORE cancel to ensure safe coordination
-	var channelToClose chan ConnectResult
-	if s.ConnectResult != nil {
-		channelToClose = s.ConnectResult
-		s.ConnectResult = nil
-	}
-
-	// Cancel background connect goroutine after marking channel invalid
-	if s.ConnectCancel != nil {
-		s.ConnectCancel()
-		s.ConnectCancel = nil
-	}
-
-	// Close the saved channel using sync.Once for safety
-	// Goroutine will see nil ConnectResult and skip sending
-	if channelToClose != nil {
-		s.connectResultCloseOnce.Do(func() {
-			close(channelToClose)
-		})
-	}
-
-	s.State = TCPStateClosed
+		if s.ConnectResult != nil {
+			close(s.ConnectResult)
+			s.ConnectResult = nil
+		}
+		if s.ConnectCancel != nil {
+			s.ConnectCancel()
+			s.ConnectCancel = nil
+		}
+		s.State = TCPStateClosed
+	})
 	return err
 }
 

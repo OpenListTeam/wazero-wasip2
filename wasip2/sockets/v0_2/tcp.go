@@ -358,9 +358,7 @@ func (i *tcpImpl) Subscribe(pctx context.Context, this TCPSocket) wasip2_io.Poll
 	sock, ok := i.host.TCPSocketManager().Get(this)
 	if !ok {
 		// Invalid handle, return a ready pollable to allow the guest to discover the error quickly.
-		p := manager_io.NewPollable(nil)
-		handle := i.host.PollManager().Add(p)
-		p.SetReady()
+		handle := i.host.PollManager().Add(manager_io.ReadyPollable)
 		return handle
 	}
 
@@ -429,8 +427,6 @@ func (i *tcpImpl) Subscribe(pctx context.Context, this TCPSocket) wasip2_io.Poll
 	}
 
 	// Fallback for states with no specific polling mechanism (e.g. no Fd).
-	p := manager_io.NewPollable(nil)
-	handle := i.host.PollManager().Add(p)
-	p.SetReady()
+	handle := i.host.PollManager().Add(manager_io.ReadyPollable)
 	return handle
 }
