@@ -3,14 +3,14 @@ package io
 import (
 	"bytes"
 	"io"
+	"os"
 	"sync"
 	"sync/atomic"
 )
 
 // Buffer size constants for different use cases
 const (
-	defaultBufferSize = 32768   // 32KB - better for typical operations
-	maxBufferGrowth   = 2097152 // 2MB - maximum buffer growth limit
+	defaultBufferSize = 32768 // 32KB - better for typical operations
 )
 
 // --- 优化后的异步读取封装器 ---
@@ -31,13 +31,13 @@ type AsyncReadWrapper struct {
 	reader          io.Reader
 	buffer          *bytes.Buffer
 	mutex           sync.Mutex
+	cond            *sync.Cond
 	ready           *ChannelPollable
 	done            chan struct{}
 	err             error
 	once            sync.Once
 	closeUnderlying bool
-	bufferSize      int  // Current read buffer size
-	readBuf         []byte // Reusable read buffer
+	maxBufferSize   int
 }
 
 // NewAsyncReadWrapper creates and starts a new async read wrapper
@@ -48,14 +48,13 @@ func NewAsyncReadWrapper(r io.Reader, opts ...AsyncReadWrapperOption) *AsyncRead
 		ready:           NewPollable(nil),
 		done:            make(chan struct{}),
 		closeUnderlying: true,
-		bufferSize:      defaultBufferSize,
+		maxBufferSize:   defaultBufferSize,
 	}
 	for _, opt := range opts {
 		opt(wrapper)
 	}
-	// Allocate reusable read buffer
-	wrapper.readBuf = make([]byte, wrapper.bufferSize)
-	
+	wrapper.cond = sync.NewCond(&wrapper.mutex)
+
 	go wrapper.run()
 	return wrapper
 }
@@ -68,46 +67,35 @@ func (arw *AsyncReadWrapper) run() {
 		arw.mutex.Unlock()
 	}()
 
-	consecutiveFull := 0
-	
+	readBuf := make([]byte, defaultBufferSize)
 	for {
 		select {
 		case <-arw.done:
+			arw.err = os.ErrClosed
 			return
 		default:
 		}
-
-		// Use the preallocated reusable buffer
-		n, readErr := arw.reader.Read(arw.readBuf)
+		n, readErr := arw.reader.Read(readBuf)
 
 		arw.mutex.Lock()
 		wasEmpty := arw.buffer.Len() == 0
 		if n > 0 {
-			arw.buffer.Write(arw.readBuf[:n])
-			
-			// Adaptive buffer sizing: grow if consistently reading full buffers
-			if n == len(arw.readBuf) {
-				consecutiveFull++
-				if consecutiveFull >= 3 && arw.bufferSize < maxBufferGrowth {
-					newSize := arw.bufferSize * 2
-					if newSize <= maxBufferGrowth {
-						arw.bufferSize = newSize
-						arw.readBuf = make([]byte, arw.bufferSize)
-						consecutiveFull = 0
-					}
+			if arw.buffer.Len() >= arw.maxBufferSize {
+				arw.cond.Wait()
+				select {
+				case <-arw.done:
+					arw.err = os.ErrClosed
+					arw.mutex.Unlock()
+					return
+				default:
 				}
-			} else {
-				consecutiveFull = 0
+				wasEmpty = arw.buffer.Len() == 0
 			}
+			arw.buffer.Write(readBuf[:n])
 		}
 
-		if readErr != nil {
-			if arw.err == nil {
-				arw.err = readErr
-			}
-		}
-
-		if (wasEmpty && arw.buffer.Len() > 0) || (readErr != nil) {
+		if (wasEmpty && n > 0) || (readErr != nil) {
+			arw.err = readErr
 			arw.ready.SetReady()
 		}
 		arw.mutex.Unlock()
@@ -133,32 +121,17 @@ func (arw *AsyncReadWrapper) Read(p []byte) (n int, err error) {
 		// 重置 pollable 的状态，以防止虚假唤醒。
 		if arw.buffer.Len() == 0 && arw.err == nil {
 			arw.ready.Reset()
+			arw.cond.Signal()
 		}
-
 		return n, nil
 	}
 
 	// 2. 缓冲区为空，检查是否有已记录的错误（如 EOF）。
-	if arw.err != nil {
-		return 0, arw.err
-	}
-
-	// 3. 缓冲区为空且无错误，表示需要等待后台 goroutine 读取更多数据。
-	return 0, nil
+	return 0, arw.err
 }
 
 // subscribe 返回一个 pollable 对象，当有数据可读或发生错误时，该对象会变为就绪状态。
 func (arw *AsyncReadWrapper) subscribe() IPollable {
-	arw.mutex.Lock()
-	defer arw.mutex.Unlock()
-
-	// 如果数据已在缓冲区中或已发生错误，则立即返回一个就绪的 pollable。
-	if arw.buffer.Len() > 0 || arw.err != nil {
-		return ReadyPollable
-	}
-
-	// 否则，重置 pollable 状态并返回，等待 run goroutine 将其设置为就绪。
-	arw.ready.Reset()
 	return arw.ready
 }
 
@@ -167,6 +140,7 @@ func (arw *AsyncReadWrapper) Close() error {
 	var closeErr error
 	arw.once.Do(func() {
 		close(arw.done)
+		arw.cond.Broadcast()
 
 		// 根据配置决定是否关闭底层 reader
 		if arw.closeUnderlying {
@@ -230,7 +204,6 @@ type AsyncWriteWrapper struct {
 	once            sync.Once
 	closeUnderlying bool
 	bytesWritten    *atomic.Uint64
-	batchThreshold  int // Write in batches when buffer reaches this size
 }
 
 // NewAsyncWriteWrapper creates and starts a new async write wrapper
@@ -246,8 +219,6 @@ func NewAsyncWriteWrapper(w io.Writer, opts ...AsyncWriteWrapperOption) *AsyncWr
 	for _, opt := range opts {
 		opt(wrapper)
 	}
-	// Set batch threshold to 75% of max buffer size for better throughput
-	wrapper.batchThreshold = (wrapper.maxBufferSize * 3) / 4
 	wrapper.cond = sync.NewCond(&wrapper.mutex)
 	wrapper.ready.SetReady()
 	go wrapper.run()
@@ -255,27 +226,43 @@ func NewAsyncWriteWrapper(w io.Writer, opts ...AsyncWriteWrapperOption) *AsyncWr
 }
 
 func (aww *AsyncWriteWrapper) run() {
+	var tempBuf []byte
 	for {
 		aww.mutex.Lock()
 		// Wait for data or close signal
-		for aww.buffer.Len() == 0 {
+		bufLen := aww.buffer.Len()
+		for bufLen == 0 {
 			select {
 			case <-aww.done:
+				aww.err = os.ErrClosed
 				aww.mutex.Unlock()
 				return
 			default:
-				aww.cond.Wait()
 			}
+			aww.ready.SetReady()
+			aww.cond.Signal()
+			aww.cond.Wait()
+			bufLen = aww.buffer.Len()
 		}
 
-		// Batch write: read all available data from buffer
-		bufLen := aww.buffer.Len()
-		tempBuf := make([]byte, bufLen)
-		_, _ = aww.buffer.Read(tempBuf)
+		if bufLen > len(tempBuf) {
+			tempBuf = make([]byte, bufLen)
+		}
+		n, _ := aww.buffer.Read(tempBuf)
 		aww.mutex.Unlock()
 
 		// Perform write outside of lock to avoid blocking buffer operations
-		n, err := aww.writer.Write(tempBuf)
+		var err error
+		p := tempBuf
+		for writeSize := n; writeSize > 0; {
+			var w int
+			w, err = aww.writer.Write(p[:writeSize])
+			if err != nil {
+				break
+			}
+			writeSize -= w
+			p = p[w:]
+		}
 
 		aww.mutex.Lock()
 		if n > 0 && aww.bytesWritten != nil {
@@ -284,10 +271,8 @@ func (aww *AsyncWriteWrapper) run() {
 		if err != nil {
 			aww.err = err
 		}
-		
+
 		// Signal that buffer space is available
-		aww.ready.SetReady()
-		aww.cond.Broadcast()
 		aww.mutex.Unlock()
 	}
 }
@@ -348,11 +333,6 @@ func (aww *AsyncWriteWrapper) CheckWrite() uint64 {
 }
 
 func (aww *AsyncWriteWrapper) subscribe() IPollable {
-	aww.mutex.Lock()
-	defer aww.mutex.Unlock()
-	if aww.buffer.Len() < aww.maxBufferSize || aww.err != nil {
-		aww.ready.SetReady()
-	}
 	return aww.ready
 }
 
@@ -367,19 +347,18 @@ func (aww *AsyncWriteWrapper) Close() error {
 }
 
 func (aww *AsyncWriteWrapper) closeInternal() error {
+	var closeErr error
 	aww.once.Do(func() {
-		aww.mutex.Lock()
 		close(aww.done)
 		aww.cond.Broadcast()
-		aww.mutex.Unlock()
+		if aww.closeUnderlying {
+			if c, ok := aww.writer.(io.Closer); ok {
+				closeErr = c.Close()
+			}
+		}
 	})
 
-	if aww.closeUnderlying {
-		if c, ok := aww.writer.(io.Closer); ok {
-			return c.Close()
-		}
-	}
-	return nil
+	return closeErr
 }
 
 // NewAsyncStreamForWriter 是一个便捷辅助函数，
