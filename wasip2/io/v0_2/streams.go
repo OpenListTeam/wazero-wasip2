@@ -299,24 +299,31 @@ func (i *streamsImpl) Splice(ctx context.Context, this OutputStream, src InputSt
 	writeSize := maxLen
 F:
 	for writeSize > 0 {
-		n, err := srcReader.Read(buf)
-		if n > 0 {
-			var werr error
-			n, werr = dst.Writer.Write(buf[:n])
-			if err != io.EOF {
-				err = werr
+		readSize := len(buf)
+		if dst.CheckWriter != nil {
+			readSize = min(readSize, int(dst.CheckWriter.CheckWrite()))
+		}
+		readSize, err := srcReader.Read(buf[:readSize])
+		if readSize > 0 {
+			data := buf[:readSize]
+			for len(data) > 0 {
+				written, writeErr := dst.Writer.Write(data)
+				writeSize -= uint64(written)
+				if writeErr != nil {
+					err = writeErr
+					break
+				}
+				data = data[written:]
 			}
 		}
 		switch err {
 		case nil:
-			if n == 0 {
-				// 读或写了 0 字节，退出循环。
+			if readSize == 0 {
 				break F
 			}
 			// 正常读写，继续处理。
 		case io.EOF:
 			// 源流已结束，退出循环。
-			writeSize -= uint64(n)
 			break F
 		default:
 			// 其他错误，记录并返回。
@@ -436,7 +443,7 @@ func (i *streamsImpl) BlockingSplice(ctx context.Context, this OutputStream, src
 			return witgo.Err[uint64](StreamError{LastOperationFailed: &errHandle})
 		}
 	}
-	return witgo.Ok[uint64, StreamError](maxLen - uint64(n))
+	return witgo.Ok[uint64, StreamError](uint64(n))
 }
 
 // WriteZeroes 从 Splice 继承了新的阻塞行为。
