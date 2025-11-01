@@ -112,6 +112,20 @@ func (m *ResourceManager[T]) Range(f func(handle uint32, resource T) bool) {
 	}
 }
 
+// DoWith executes the provided function with the resource associated with
+// the given handle. It returns true if the resource was found and the function
+// was executed, false otherwise.
+func (m *ResourceManager[T]) DoWith(handle uint32, do func(resource T)) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	res, ok := m.handles[handle]
+	if !ok {
+		return false
+	}
+	do(res)
+	return true
+}
+
 // CloseAll removes all resources and calls destructor on each if provided
 // This is useful for cleanup when shutting down a Host instance
 func (m *ResourceManager[T]) CloseAll() {

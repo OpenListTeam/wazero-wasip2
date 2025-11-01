@@ -277,9 +277,9 @@ func (aww *AsyncWriteWrapper) run() {
 		}
 		if err != nil {
 			aww.err = err
+			aww.mutex.Unlock()
+			return
 		}
-
-		// Signal that buffer space is available
 		aww.mutex.Unlock()
 	}
 }

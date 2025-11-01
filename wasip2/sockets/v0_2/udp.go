@@ -127,19 +127,21 @@ func (i *udpImpl) Subscribe(ctx context.Context, this UDPSocket) wasip2_io.Polla
 }
 
 func (i *udpImpl) DropIncomingDatagramStream(_ context.Context, handle IncomingDatagramStream) {
-	sock, ok := i.host.UDPSocketManager().Get(handle)
-	if ok && sock.Reader != nil {
-		sock.Reader.Close()
-		sock.Writer = nil
-	}
+	i.host.UDPSocketManager().DoWith(handle, func(s *manager_sockets.UDPSocket) {
+		if s.Reader != nil {
+			s.Reader.Close()
+			s.Reader = nil
+		}
+	})
 }
 
 func (i *udpImpl) DropOutgoingDatagramStream(_ context.Context, handle OutgoingDatagramStream) {
-	sock, ok := i.host.UDPSocketManager().Get(handle)
-	if ok && sock.Writer != nil {
-		sock.Writer.Close()
-		sock.Writer = nil
-	}
+	i.host.UDPSocketManager().DoWith(handle, func(s *manager_sockets.UDPSocket) {
+		if s.Writer != nil {
+			s.Writer.Close()
+			s.Writer = nil
+		}
+	})
 }
 
 func (i *udpImpl) Receive(_ context.Context, this IncomingDatagramStream, maxResults uint64) witgo.Result[[]IncomingDatagram, ErrorCode] {
