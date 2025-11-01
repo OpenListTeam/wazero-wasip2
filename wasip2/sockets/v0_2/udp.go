@@ -18,6 +18,13 @@ type udpImpl struct {
 func newUDPImpl(h *wasip2.Host) *udpImpl {
 	return &udpImpl{host: h}
 }
+func (i *udpImpl) DropUDPSocket(_ context.Context, handle UDPSocket) {
+	sock, ok := i.host.UDPSocketManager().Pop(handle)
+	if !ok {
+		return
+	}
+	sock.Close()
+}
 
 func (i *udpImpl) Stream(_ context.Context, this UDPSocket, remoteAddress witgo.Option[IPSocketAddress]) witgo.Result[witgo.Tuple[IncomingDatagramStream, OutgoingDatagramStream], ErrorCode] {
 	// stream 方法用于创建收发数据报的流。在我们的实现中，

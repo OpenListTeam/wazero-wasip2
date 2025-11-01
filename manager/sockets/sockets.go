@@ -75,17 +75,20 @@ type TCPSocket struct {
 	// 并将结果（一个 ConnectResult）发送到这个 channel。
 	// Channel is managed by background goroutine and closed when done.
 	ConnectResult chan ConnectResult
-	
+
 	// ConnectCancel cancels the background connect goroutine.
 	// Must be called before ConnectResult becomes invalid.
 	ConnectCancel func()
-	
+
 	// Ensures ConnectResult channel is closed only once by background goroutine.
 	connectResultCloseOnce sync.Once
 }
 
 // Close releases all resources associated with the TCPSocket
 func (s *TCPSocket) Close() error {
+	if s.Fd != 0 {
+		CloseFd(s.Fd)
+	}
 	var err error
 	if s.Listener != nil {
 		err = s.Listener.Close()
@@ -95,7 +98,7 @@ func (s *TCPSocket) Close() error {
 			err = closeErr
 		}
 	}
-	
+
 	// Atomically swap ConnectResult to nil to prevent goroutine from sending
 	// This must happen BEFORE cancel to ensure safe coordination
 	var channelToClose chan ConnectResult
@@ -103,13 +106,13 @@ func (s *TCPSocket) Close() error {
 		channelToClose = s.ConnectResult
 		s.ConnectResult = nil
 	}
-	
+
 	// Cancel background connect goroutine after marking channel invalid
 	if s.ConnectCancel != nil {
 		s.ConnectCancel()
 		s.ConnectCancel = nil
 	}
-	
+
 	// Close the saved channel using sync.Once for safety
 	// Goroutine will see nil ConnectResult and skip sending
 	if channelToClose != nil {
@@ -117,7 +120,7 @@ func (s *TCPSocket) Close() error {
 			close(channelToClose)
 		})
 	}
-	
+
 	s.State = TCPStateClosed
 	return err
 }
@@ -149,6 +152,9 @@ type UDPSocket struct {
 
 // Close releases all resources associated with the UDPSocket
 func (s *UDPSocket) Close() error {
+	if s.Fd != 0 {
+		CloseFd(s.Fd)
+	}
 	if s.Reader != nil {
 		s.Reader.Close()
 	}

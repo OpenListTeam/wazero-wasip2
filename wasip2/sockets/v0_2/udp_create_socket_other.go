@@ -24,7 +24,3 @@ func (i *udpCreateSocketImpl) CreateUDPSocket(_ context.Context, addressFamily I
 	handle := i.host.UDPSocketManager().Add(udpSocket)
 	return witgo.Ok[UDPSocket, ErrorCode](handle)
 }
-
-func (i *udpImpl) DropUDPSocket(_ context.Context, handle UDPSocket) {
-	i.host.UDPSocketManager().Remove(handle)
-}

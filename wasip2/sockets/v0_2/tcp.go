@@ -19,6 +19,14 @@ func newTCPImpl(h *wasip2.Host) *tcpImpl {
 	return &tcpImpl{host: h}
 }
 
+func (i *tcpImpl) DropTCPSocket(_ context.Context, handle TCPSocket) {
+	sock, ok := i.host.TCPSocketManager().Pop(handle)
+	if !ok {
+		return
+	}
+	sock.Close()
+}
+
 func (i *tcpImpl) StartConnect(ctx context.Context, this TCPSocket, network Network, remoteAddress IPSocketAddress) witgo.Result[witgo.Unit, ErrorCode] {
 	sock, ok := i.host.TCPSocketManager().Get(this)
 	if !ok {
@@ -46,18 +54,18 @@ func (i *tcpImpl) StartConnect(ctx context.Context, this TCPSocket, network Netw
 	go func() {
 		// Capture sock reference to safely access it
 		socketRef := sock
-		
+
 		// Use DialContext instead of DialTCP to support cancellation
 		var d net.Dialer
 		conn, dialErr := d.DialContext(connectCtx, "tcp", addr.String())
-		
+
 		var tcpConn *net.TCPConn
 		if conn != nil {
 			tcpConn = conn.(*net.TCPConn)
 		}
-		
+
 		result := sockets.ConnectResult{Conn: tcpConn, Err: dialErr}
-		
+
 		// Check if socket was closed (ConnectResult set to nil) before sending
 		// Use non-blocking select to prevent panic on closed channel
 		if socketRef.ConnectResult != nil {
@@ -79,7 +87,7 @@ func (i *tcpImpl) StartConnect(ctx context.Context, this TCPSocket, network Netw
 			// Socket was closed before we could send result
 			tcpConn.Close()
 		}
-		
+
 		// Do NOT close channel here - it's managed by TCPSocket.Close
 	}()
 
@@ -110,7 +118,7 @@ func (i *tcpImpl) FinishConnect(ctx context.Context, this TCPSocket) witgo.Resul
 			sock.State = sockets.TCPStateClosed
 			return witgo.Err[witgo.Tuple[wasip2_io.InputStream, wasip2_io.OutputStream], ErrorCode](ErrorCodeConnectionAborted)
 		}
-		
+
 		if result.Err != nil {
 			sock.State = sockets.TCPStateClosed
 			return witgo.Err[witgo.Tuple[wasip2_io.InputStream, wasip2_io.OutputStream], ErrorCode](mapOsError(result.Err))
@@ -373,7 +381,7 @@ func (i *tcpImpl) Subscribe(pctx context.Context, this TCPSocket) wasip2_io.Poll
 				p.SetReady()
 				return
 			}
-			
+
 			select {
 			// Wait for the result from the connection goroutine.
 			case res, ok := <-resultChan:

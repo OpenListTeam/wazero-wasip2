@@ -41,17 +41,15 @@ func (i *streamsImpl) subscribeToStream(this uint32) Pollable {
 }
 
 func (i *streamsImpl) DropInputStream(_ context.Context, handle InputStream) {
-	if s, ok := i.sm.Get(handle); ok && s.Closer != nil {
+	if s, ok := i.sm.Pop(handle); ok && s.Closer != nil {
 		s.Closer.Close()
 	}
-	i.sm.Remove(handle)
 }
 
 func (i *streamsImpl) DropOutputStream(_ context.Context, handle OutputStream) {
-	if s, ok := i.sm.Get(handle); ok && s.Closer != nil {
+	if s, ok := i.sm.Pop(handle); ok && s.Closer != nil {
 		s.Closer.Close()
 	}
-	i.sm.Remove(handle)
 }
 
 func (i *streamsImpl) Read(_ context.Context, this InputStream, maxLen uint64) witgo.Result[[]byte, StreamError] {

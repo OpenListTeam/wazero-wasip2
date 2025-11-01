@@ -64,16 +64,3 @@ func (i *udpCreateSocketImpl) CreateUDPSocket(_ context.Context, addressFamily I
 	h := i.host.UDPSocketManager().Add(udpSocket)
 	return witgo.Ok[UDPSocket, ErrorCode](h)
 }
-
-func (i *udpImpl) DropUDPSocket(_ context.Context, handle UDPSocket) {
-	sock, ok := i.host.UDPSocketManager().Get(handle)
-	if !ok {
-		return
-	}
-	if sock.Conn != nil {
-		sock.Conn.Close()
-	} else if sock.Fd != 0 {
-		windows.Close(windows.Handle(sock.Fd))
-	}
-	i.host.UDPSocketManager().Remove(handle)
-}
