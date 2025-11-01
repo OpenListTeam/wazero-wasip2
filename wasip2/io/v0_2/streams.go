@@ -5,6 +5,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/OpenListTeam/wazero-wasip2/common/bytespool"
 	manager_io "github.com/OpenListTeam/wazero-wasip2/manager/io"
 	witgo "github.com/OpenListTeam/wazero-wasip2/wit-go"
 )
@@ -136,7 +137,8 @@ func (i *streamsImpl) BlockingSkip(ctx context.Context, this InputStream, maxLen
 // skipByReading 是跳过字节的核心实现，支持阻塞和非阻塞两种模式。
 func (i *streamsImpl) skipByReading(s *manager_io.Stream, maxLen uint64, blocking bool) witgo.Result[uint64, StreamError] {
 	var totalSkipped uint64
-	buf := make([]byte, 32*1024)
+	buf := bytespool.Alloc(32 * 1024)
+	defer bytespool.Free(buf)
 
 	for totalSkipped < maxLen {
 		readSize := uint64(len(buf))
@@ -294,7 +296,8 @@ func (i *streamsImpl) Splice(ctx context.Context, this OutputStream, src InputSt
 		}
 		srcReader = srcStream.Reader
 	}
-	buf := make([]byte, min(maxLen, 32*1024))
+	buf := bytespool.Alloc(32 * 1024)
+	defer bytespool.Free(buf)
 	writeSize := maxLen
 F:
 	for writeSize > 0 {
@@ -415,7 +418,9 @@ func (i *streamsImpl) BlockingSplice(ctx context.Context, this OutputStream, src
 		srcReader = newBlockingReader(ctx, srcStream)
 	}
 
-	n, err := io.CopyN(newBlockingWriter(ctx, dst), srcReader, int64(maxLen))
+	buf := bytespool.Alloc(32 * 1024)
+	defer bytespool.Free(buf)
+	n, err := io.CopyBuffer(newBlockingWriter(ctx, dst), io.LimitReader(srcReader, int64(maxLen)), buf)
 	switch err {
 	case nil:
 		// 成功写入所有请求的字节，继续循环直到完成。

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/OpenListTeam/wazero-wasip2/common/bytespool"
 	manager_http "github.com/OpenListTeam/wazero-wasip2/manager/http"
 	"github.com/OpenListTeam/wazero-wasip2/wasip2"
 	v0_2 "github.com/OpenListTeam/wazero-wasip2/wasip2/http/v0_2"
@@ -137,6 +138,8 @@ func (s *Server) writeOutgoingResponse(w http.ResponseWriter, respHandle v0_2.Ou
 
 	// 写入 Body
 	if resp.Body != nil {
-		io.Copy(w, resp.Body)
+		buf := bytespool.Alloc(32 * 1024)
+		defer bytespool.Free(buf)
+		io.CopyBuffer(w, resp.Body, buf)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/binary"
+	"io"
 )
 
 type randomImpl struct{}
@@ -15,7 +16,7 @@ func newRandomImpl() *randomImpl {
 // GetRandomBytes 实现了 get-random-bytes 函数。
 func (i *randomImpl) GetRandomBytes(_ context.Context, length uint64) []byte {
 	buf := make([]byte, length)
-	_, err := rand.Read(buf)
+	_, err := io.ReadFull(rand.Reader, buf)
 	if err != nil {
 		// 根据 WASI Random 规范，此函数不应失败。
 		// 在真实世界中，如果 crypto/rand.Read 失败，表明系统存在严重问题。

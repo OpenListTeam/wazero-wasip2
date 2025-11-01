@@ -6,11 +6,13 @@ import (
 	"os"
 	"sync"
 	"sync/atomic"
+
+	"github.com/OpenListTeam/wazero-wasip2/common/bytespool"
 )
 
 // Buffer size constants for different use cases
 const (
-	defaultBufferSize = 32768 // 32KB - better for typical operations
+	defaultBufferSize = 32 * 1024
 )
 
 // --- 优化后的异步读取封装器 ---
@@ -61,13 +63,14 @@ func NewAsyncReadWrapper(r io.Reader, opts ...AsyncReadWrapperOption) *AsyncRead
 
 // run executes background reads with adaptive buffer sizing
 func (arw *AsyncReadWrapper) run() {
+	readBuf := bytespool.Alloc(defaultBufferSize)
 	defer func() {
+		bytespool.Free(readBuf)
 		arw.mutex.Lock()
 		arw.ready.SetReady()
 		arw.mutex.Unlock()
 	}()
 
-	readBuf := make([]byte, defaultBufferSize)
 	for {
 		select {
 		case <-arw.done:
@@ -227,6 +230,9 @@ func NewAsyncWriteWrapper(w io.Writer, opts ...AsyncWriteWrapperOption) *AsyncWr
 
 func (aww *AsyncWriteWrapper) run() {
 	var tempBuf []byte
+	defer func() {
+		bytespool.Free(tempBuf)
+	}()
 	for {
 		aww.mutex.Lock()
 		// Wait for data or close signal
@@ -246,7 +252,8 @@ func (aww *AsyncWriteWrapper) run() {
 		}
 
 		if bufLen > len(tempBuf) {
-			tempBuf = make([]byte, bufLen)
+			bytespool.Free(tempBuf)
+			tempBuf = bytespool.Alloc(int32(bufLen))
 		}
 		n, _ := aww.buffer.Read(tempBuf)
 		aww.mutex.Unlock()
