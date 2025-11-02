@@ -228,6 +228,10 @@ func lowerSlice(ctx context.Context, mem api.Memory, ptr uint32, val reflect.Val
 	contentPtr := binary.LittleEndian.Uint32(buf[0:4])
 	contentLen := binary.LittleEndian.Uint32(buf[4:8])
 
+	return lowerSlice2(ctx, mem, contentPtr, contentLen, val)
+}
+
+func lowerSlice2(ctx context.Context, mem api.Memory, contentPtr uint32, contentLen uint32, val reflect.Value) error {
 	elemType := val.Type().Elem()
 
 	// 快速路径：[]byte（元素类型为 uint8），一次性读取并直接赋值，避免逐元素读写开销。

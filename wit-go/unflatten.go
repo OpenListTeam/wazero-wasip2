@@ -105,20 +105,7 @@ func (h *Host) unflattenSlice(ctx context.Context, mem api.Memory, ps *paramStre
 		return reflect.Value{}, fmt.Errorf("not enough params on stack for slice")
 	}
 
-	// We must use `Lower` here, as it contains the generic logic for handling list<T>.
-	// We do this by temporarily creating the {ptr, len} structure in memory.
-	tempPtr, err := h.allocator.Allocate(ctx, 8, 4)
-	if err != nil {
-		return reflect.Value{}, err
-	}
-	if !mem.WriteUint32Le(tempPtr, uint32(ptr)) {
-		return reflect.Value{}, fmt.Errorf("failed to write temp slice ptr")
-	}
-	if !mem.WriteUint32Le(tempPtr+4, uint32(length)) {
-		return reflect.Value{}, fmt.Errorf("failed to write temp slice len")
-	}
-
-	err = Lower(ctx, h, tempPtr, outVal)
+	err := lowerSlice2(ctx, mem, uint32(ptr), uint32(length), outVal)
 	return outVal, err
 }
 
