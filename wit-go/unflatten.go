@@ -236,28 +236,21 @@ func (e *Exporter) makeWrapperFunc(funcType reflect.Type, funcVal reflect.Value)
 		callArgs := make([]reflect.Value, funcType.NumIn())
 		funcParamIndex := 0
 
-		if funcType.NumIn() > 0 && funcType.In(0) == reflect.TypeFor[context.Context]() {
+		if len(callArgs) > 0 && funcType.In(0) == reflect.TypeFor[context.Context]() {
 			callArgs[0] = args[0]
 			funcParamIndex = 1
 		}
 
-		for i := funcParamIndex; i < funcType.NumIn(); i++ {
-			paramType := funcType.In(i)
+		for ; funcParamIndex < len(callArgs); funcParamIndex++ {
+			paramType := funcType.In(funcParamIndex)
 			val, err := h.unflattenParam(ctx, module.Memory(), paramStream, paramType)
 			if err != nil {
-				panic(fmt.Sprintf("failed to unflatten parameter %d for %s: %v", i, funcVal.Type().Name(), err))
+				panic(fmt.Sprintf("failed to unflatten parameter %d for %s: %v", funcParamIndex, funcVal.Type().Name(), err))
 			}
-			callArgs[i] = val
+			callArgs[funcParamIndex] = val
 		}
 
 		results := funcVal.Call(callArgs)
-
-		// Free any byte slices allocated during unflattening.
-		// for _, arg := range callArgs {
-		// 	if arg.Kind() == reflect.Slice && arg.Type().Elem().Kind() == reflect.Uint8 {
-		// 		bytespool.Free(arg.Bytes())
-		// 	}
-		// }
 
 		// Handle return values
 		if hasRetptr {

@@ -242,9 +242,9 @@ func lowerSlice2(ctx context.Context, mem api.Memory, contentPtr uint32, content
 			val.Set(reflect.ValueOf(zero))
 			return nil
 		}
-		content, ok := mem.Read(contentPtr, contentLen)
-		if !ok {
-			return fmt.Errorf("failed to read byte slice content at ptr %d len %d", contentPtr, contentLen)
+		content, err := LowerSliceFromParts(mem, contentPtr, contentLen)
+		if err != nil {
+			return err
 		}
 		val.Set(reflect.ValueOf(content))
 		return nil

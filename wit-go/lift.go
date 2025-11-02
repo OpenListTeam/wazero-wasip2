@@ -42,7 +42,7 @@ func write(ctx context.Context, mem api.Memory, alloc *GuestAllocator, val refle
 	if isVariant(typ) {
 		var maxAlign uint32 = 1
 		caseLayouts := make([]*TypeLayout, val.NumField())
-		for i := 0; i < val.NumField(); i++ {
+		for i := range caseLayouts {
 			field := typ.Field(i)
 			fieldType := field.Type
 			if fieldType.Kind() == reflect.Pointer {
@@ -59,7 +59,7 @@ func write(ctx context.Context, mem api.Memory, alloc *GuestAllocator, val refle
 		}
 		payloadOffset := align(1, maxAlign) // disc size is 1
 
-		for i := 0; i < val.NumField(); i++ {
+		for i := range caseLayouts {
 			fieldVal := val.Field(i)
 			if !fieldVal.IsZero() {
 				if !mem.WriteByte(ptr, byte(i)) {
@@ -163,6 +163,11 @@ func write(ctx context.Context, mem api.Memory, alloc *GuestAllocator, val refle
 }
 
 func liftString(ctx context.Context, mem api.Memory, alloc *GuestAllocator, s string, ptr uint32) error {
+	header, ok := mem.Read(ptr, 8)
+	if !ok {
+		return fmt.Errorf("failed to read string ptr/len at ptr %d", ptr)
+	}
+
 	contentPtr, err := alloc.Allocate(ctx, uint32(len(s)), 1)
 	if err != nil {
 		return err
@@ -171,16 +176,16 @@ func liftString(ctx context.Context, mem api.Memory, alloc *GuestAllocator, s st
 		return fmt.Errorf("memory write failed for string content at ptr %d", contentPtr)
 	}
 
-	buf := make([]byte, 8)
-	binary.LittleEndian.PutUint32(buf[0:4], contentPtr)
-	binary.LittleEndian.PutUint32(buf[4:8], uint32(len(s)))
-	if !mem.Write(ptr, buf) {
-		return fmt.Errorf("memory write failed for string header at ptr %d", ptr)
-	}
+	binary.LittleEndian.PutUint32(header[0:4], contentPtr)
+	binary.LittleEndian.PutUint32(header[4:8], uint32(len(s)))
 	return nil
 }
 
 func liftSlice(ctx context.Context, mem api.Memory, alloc *GuestAllocator, val reflect.Value, ptr uint32) error {
+	header, ok := mem.Read(ptr, 8)
+	if !ok {
+		return fmt.Errorf("failed to read slice ptr/len at ptr %d", ptr)
+	}
 	elemLayout, err := GetOrCalculateLayout(val.Type().Elem())
 	if err != nil {
 		return err
@@ -217,11 +222,9 @@ func liftSlice(ctx context.Context, mem api.Memory, alloc *GuestAllocator, val r
 			}
 		}
 	}
-
-	buf := make([]byte, 8)
-	binary.LittleEndian.PutUint32(buf[0:4], contentPtr)
-	binary.LittleEndian.PutUint32(buf[4:8], uint32(sliceLen))
-	return check(mem.Write(ptr, buf))
+	binary.LittleEndian.PutUint32(header[0:4], contentPtr)
+	binary.LittleEndian.PutUint32(header[4:8], uint32(sliceLen))
+	return nil
 }
 
 func liftArray(ctx context.Context, mem api.Memory, alloc *GuestAllocator, val reflect.Value, ptr uint32) error {
