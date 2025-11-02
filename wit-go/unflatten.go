@@ -265,6 +265,13 @@ func (e *Exporter) makeWrapperFunc(funcType reflect.Type, funcVal reflect.Value)
 
 		results := funcVal.Call(callArgs)
 
+		// Free any byte slices allocated during unflattening.
+		// for _, arg := range callArgs {
+		// 	if arg.Kind() == reflect.Slice && arg.Type().Elem().Kind() == reflect.Uint8 {
+		// 		bytespool.Free(arg.Bytes())
+		// 	}
+		// }
+
 		// Handle return values
 		if hasRetptr {
 			// Complex type: lift the result to the guest-provided pointer.

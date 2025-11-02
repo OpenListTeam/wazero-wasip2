@@ -199,12 +199,22 @@ func liftSlice(ctx context.Context, mem api.Memory, alloc *GuestAllocator, val r
 		return err
 	}
 
-	for i := 0; i < sliceLen; i++ {
-		elemVal := val.Index(i)
-		elemPtr := contentPtr + (uint32(i) * stride)
+	if sliceLen > 0 {
+		if val.Type().Elem().Kind() == reflect.Uint8 {
+			// 快速路径：[]byte，一次性写入，避免逐元素写入开销。
+			if !mem.Write(contentPtr, val.Bytes()) {
+				return fmt.Errorf("failed to write []byte slice content at ptr %d", contentPtr)
+			}
+		} else {
+			// 普通路径：逐元素写入。
+			for i := range sliceLen {
+				elemVal := val.Index(i)
+				elemPtr := contentPtr + (uint32(i) * stride)
 
-		if err := write(ctx, mem, alloc, elemVal, elemPtr, elemLayout); err != nil {
-			return fmt.Errorf("failed to write slice element %d: %w", i, err)
+				if err := write(ctx, mem, alloc, elemVal, elemPtr, elemLayout); err != nil {
+					return fmt.Errorf("failed to write slice element %d: %w", i, err)
+				}
+			}
 		}
 	}
 
