@@ -81,8 +81,8 @@ func (arw *AsyncReadWrapper) run() {
 		n, readErr := arw.reader.Read(readBuf)
 
 		arw.mutex.Lock()
-		wasEmpty := arw.buffer.Len() == 0
 		if n > 0 {
+			wasEmpty := arw.buffer.Len() == 0
 			if arw.buffer.Len() >= arw.maxBufferSize {
 				arw.cond.Wait()
 				select {
@@ -95,17 +95,17 @@ func (arw *AsyncReadWrapper) run() {
 				wasEmpty = arw.buffer.Len() == 0
 			}
 			arw.buffer.Write(readBuf[:n])
+			if wasEmpty {
+				arw.ready.SetReady()
+			}
 		}
-
-		if (wasEmpty && n > 0) || (readErr != nil) {
-			arw.err = readErr
-			arw.ready.SetReady()
-		}
-		arw.mutex.Unlock()
 
 		if readErr != nil {
+			arw.err = readErr
+			arw.mutex.Unlock()
 			return
 		}
+		arw.mutex.Unlock()
 	}
 }
 
@@ -143,7 +143,7 @@ func (arw *AsyncReadWrapper) Close() error {
 	var closeErr error
 	arw.once.Do(func() {
 		close(arw.done)
-		arw.cond.Broadcast()
+		arw.cond.Signal()
 
 		// 根据配置决定是否关闭底层 reader
 		if arw.closeUnderlying {
@@ -232,6 +232,10 @@ func (aww *AsyncWriteWrapper) run() {
 	var tempBuf []byte
 	defer func() {
 		bytespool.Free(tempBuf)
+		aww.mutex.Lock()
+		aww.ready.SetReady()
+		aww.cond.Broadcast()
+		aww.mutex.Unlock()
 	}()
 	for {
 		aww.mutex.Lock()
@@ -246,7 +250,7 @@ func (aww *AsyncWriteWrapper) run() {
 			default:
 			}
 			aww.ready.SetReady()
-			aww.cond.Signal()
+			aww.cond.Broadcast()
 			aww.cond.Wait()
 			bufLen = aww.buffer.Len()
 		}
