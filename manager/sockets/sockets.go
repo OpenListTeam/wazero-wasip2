@@ -1,7 +1,9 @@
 package sockets
 
 import (
+	"errors"
 	"net"
+	"sync"
 
 	witgo "github.com/OpenListTeam/wazero-wasip2/wit-go"
 )
@@ -72,7 +74,44 @@ type TCPSocket struct {
 	// ConnectResult 用于异步 connect 操作。
 	// 当 start-connect 被调用时，一个 goroutine 会开始连接，
 	// 并将结果（一个 ConnectResult）发送到这个 channel。
+	// Channel is managed by background goroutine and closed when done.
 	ConnectResult chan ConnectResult
+
+	// ConnectCancel cancels the background connect goroutine.
+	// Must be called before ConnectResult becomes invalid.
+	ConnectCancel func()
+
+	// Ensure Done channel is only closed once
+	closeOnce sync.Once
+}
+
+// Close releases all resources associated with the TCPSocket
+func (s *TCPSocket) Close() error {
+	var err error
+	s.closeOnce.Do(func() {
+		if s.Fd != 0 {
+			CloseFd(s.Fd)
+		}
+		if s.Listener != nil {
+			err = s.Listener.Close()
+		}
+		if s.Conn != nil {
+			if closeErr := s.Conn.Close(); closeErr != nil && err == nil {
+				err = errors.Join(err, closeErr)
+			}
+		}
+
+		if s.ConnectResult != nil {
+			close(s.ConnectResult)
+			s.ConnectResult = nil
+		}
+		if s.ConnectCancel != nil {
+			s.ConnectCancel()
+			s.ConnectCancel = nil
+		}
+		s.State = TCPStateClosed
+	})
+	return err
 }
 
 // TCPState represents the state of a TCP socket as defined in the WIT world.
@@ -100,6 +139,23 @@ type UDPSocket struct {
 	Writer *AsyncUDPWriter
 }
 
+// Close releases all resources associated with the UDPSocket
+func (s *UDPSocket) Close() error {
+	if s.Fd != 0 {
+		CloseFd(s.Fd)
+	}
+	if s.Reader != nil {
+		s.Reader.Close()
+	}
+	if s.Writer != nil {
+		s.Writer.Close()
+	}
+	if s.Conn != nil {
+		return s.Conn.Close()
+	}
+	return nil
+}
+
 // ResolveAddressStreamState 保存了域名解析操作的状态。
 type ResolveAddressStreamState struct {
 	// 存储解析出的 IP 地址列表。
@@ -110,6 +166,17 @@ type ResolveAddressStreamState struct {
 	Error error
 	// 一个 channel，当后台解析任务完成时，它会被关闭。
 	Done chan struct{}
+	// Ensure Done channel is only closed once
+	closeOnce sync.Once
+}
+
+// CloseDone safely closes the Done channel using sync.Once
+func (s *ResolveAddressStreamState) CloseDone() {
+	s.closeOnce.Do(func() {
+		if s.Done != nil {
+			close(s.Done)
+		}
+	})
 }
 
 // --- Resource Managers ---
@@ -123,11 +190,23 @@ func NewNetworkManager() *NetworkManager {
 	return witgo.NewResourceManager[*Network](nil)
 }
 func NewTCPSocketManager() *TCPSocketManager {
-	return witgo.NewResourceManager[*TCPSocket](nil)
+	return witgo.NewResourceManager[*TCPSocket](func(socket *TCPSocket) {
+		if socket != nil {
+			socket.Close()
+		}
+	})
 }
 func NewUDPSocketManager() *UDPSocketManager {
-	return witgo.NewResourceManager[*UDPSocket](nil)
+	return witgo.NewResourceManager[*UDPSocket](func(socket *UDPSocket) {
+		if socket != nil {
+			socket.Close()
+		}
+	})
 }
 func NewResolveAddressStreamManager() *ResolveAddressStreamManager {
-	return witgo.NewResourceManager[*ResolveAddressStreamState](nil)
+	return witgo.NewResourceManager[*ResolveAddressStreamState](func(state *ResolveAddressStreamState) {
+		if state != nil {
+			state.CloseDone()
+		}
+	})
 }

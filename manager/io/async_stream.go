@@ -3,12 +3,17 @@ package io
 import (
 	"bytes"
 	"io"
+	"os"
 	"sync"
 	"sync/atomic"
+
+	"github.com/OpenListTeam/wazero-wasip2/common/bytespool"
 )
 
-// 默认的读取缓冲区大小，用于后台读取操作。
-const defaultBufferSize = 8192
+// Buffer size constants for different use cases
+const (
+	defaultBufferSize = 32 * 1024
+)
 
 // --- 优化后的异步读取封装器 ---
 
@@ -22,82 +27,85 @@ func DontCloseReader() AsyncReadWrapperOption {
 	}
 }
 
-// AsyncReadWrapper 将一个阻塞的 io.Reader 封装成一个非阻塞的 reader。
-// 它在后台持续地从底层 reader 读取数据，并将其存入内部缓冲区。
+// AsyncReadWrapper wraps a blocking io.Reader into a non-blocking reader
+// with background buffering and adaptive buffer management
 type AsyncReadWrapper struct {
 	reader          io.Reader
 	buffer          *bytes.Buffer
 	mutex           sync.Mutex
+	cond            *sync.Cond
 	ready           *ChannelPollable
 	done            chan struct{}
 	err             error
 	once            sync.Once
 	closeUnderlying bool
+	maxBufferSize   int
 }
 
-// NewAsyncReadWrapper 创建并启动一个新的异步读取封装器。
+// NewAsyncReadWrapper creates and starts a new async read wrapper
 func NewAsyncReadWrapper(r io.Reader, opts ...AsyncReadWrapperOption) *AsyncReadWrapper {
 	wrapper := &AsyncReadWrapper{
 		reader:          r,
 		buffer:          &bytes.Buffer{},
 		ready:           NewPollable(nil),
 		done:            make(chan struct{}),
-		closeUnderlying: true, // 默认在 Close 时关闭底层 reader。
+		closeUnderlying: true,
+		maxBufferSize:   defaultBufferSize,
 	}
 	for _, opt := range opts {
 		opt(wrapper)
 	}
-	// 启动后台读取 goroutine。
+	wrapper.cond = sync.NewCond(&wrapper.mutex)
+
 	go wrapper.run()
 	return wrapper
 }
 
-// run 是在后台运行的 goroutine，它持续地执行阻塞读取操作并填充缓冲区。
+// run executes background reads with adaptive buffer sizing
 func (arw *AsyncReadWrapper) run() {
+	readBuf := bytespool.Alloc(defaultBufferSize)
 	defer func() {
-		// 确保在 goroutine 退出时，任何等待的消费者都能被唤醒。
+		bytespool.Free(readBuf)
 		arw.mutex.Lock()
 		arw.ready.SetReady()
 		arw.mutex.Unlock()
 	}()
 
-	readBuf := make([]byte, defaultBufferSize)
 	for {
-		// 检查是否有关闭信号。
 		select {
 		case <-arw.done:
+			arw.err = os.ErrClosed
 			return
 		default:
 		}
-
-		// 执行阻塞读取。当没有数据时，goroutine 会在这里自然地暂停。
 		n, readErr := arw.reader.Read(readBuf)
 
 		arw.mutex.Lock()
-		wasEmpty := arw.buffer.Len() == 0
 		if n > 0 {
-			// 将读取到的数据写入内部缓冲区。
+			wasEmpty := arw.buffer.Len() == 0
+			if arw.buffer.Len() >= arw.maxBufferSize {
+				arw.cond.Wait()
+				select {
+				case <-arw.done:
+					arw.err = os.ErrClosed
+					arw.mutex.Unlock()
+					return
+				default:
+				}
+				wasEmpty = arw.buffer.Len() == 0
+			}
 			arw.buffer.Write(readBuf[:n])
-		}
-
-		// 如果发生了错误（例如 io.EOF），记录它并准备终止 goroutine。
-		if readErr != nil {
-			if arw.err == nil {
-				arw.err = readErr
+			if wasEmpty {
+				arw.ready.SetReady()
 			}
 		}
 
-		// 如果缓冲区从空变为非空，或者发生了错误，
-		// 就将 pollable 设置为就绪状态，以唤醒等待的消费者。
-		if (wasEmpty && arw.buffer.Len() > 0) || (readErr != nil) {
-			arw.ready.SetReady()
-		}
-		arw.mutex.Unlock()
-
-		// 如果遇到任何错误，就停止读取。
 		if readErr != nil {
+			arw.err = readErr
+			arw.mutex.Unlock()
 			return
 		}
+		arw.mutex.Unlock()
 	}
 }
 
@@ -116,32 +124,17 @@ func (arw *AsyncReadWrapper) Read(p []byte) (n int, err error) {
 		// 重置 pollable 的状态，以防止虚假唤醒。
 		if arw.buffer.Len() == 0 && arw.err == nil {
 			arw.ready.Reset()
+			arw.cond.Signal()
 		}
-
 		return n, nil
 	}
 
 	// 2. 缓冲区为空，检查是否有已记录的错误（如 EOF）。
-	if arw.err != nil {
-		return 0, arw.err
-	}
-
-	// 3. 缓冲区为空且无错误，表示需要等待后台 goroutine 读取更多数据。
-	return 0, nil
+	return 0, arw.err
 }
 
 // subscribe 返回一个 pollable 对象，当有数据可读或发生错误时，该对象会变为就绪状态。
 func (arw *AsyncReadWrapper) subscribe() IPollable {
-	arw.mutex.Lock()
-	defer arw.mutex.Unlock()
-
-	// 如果数据已在缓冲区中或已发生错误，则立即返回一个就绪的 pollable。
-	if arw.buffer.Len() > 0 || arw.err != nil {
-		return ReadyPollable
-	}
-
-	// 否则，重置 pollable 状态并返回，等待 run goroutine 将其设置为就绪。
-	arw.ready.Reset()
 	return arw.ready
 }
 
@@ -150,6 +143,7 @@ func (arw *AsyncReadWrapper) Close() error {
 	var closeErr error
 	arw.once.Do(func() {
 		close(arw.done)
+		arw.cond.Signal()
 
 		// 根据配置决定是否关闭底层 reader
 		if arw.closeUnderlying {
@@ -199,8 +193,8 @@ func WithMaxBufferSize(size int) AsyncWriteWrapperOption {
 	}
 }
 
-// AsyncWriteWrapper 将一个阻塞的 io.Writer 封装成一个非阻塞的 writer，
-// 带有内部缓冲区，并通过 IPollable 接口提供空间可用性通知。
+// AsyncWriteWrapper wraps a blocking io.Writer into a non-blocking writer
+// with buffering and batch write optimization
 type AsyncWriteWrapper struct {
 	writer          io.Writer
 	buffer          *bytes.Buffer
@@ -215,7 +209,7 @@ type AsyncWriteWrapper struct {
 	bytesWritten    *atomic.Uint64
 }
 
-// NewAsyncWriteWrapper 创建并启动一个新的异步写入封装器。
+// NewAsyncWriteWrapper creates and starts a new async write wrapper
 func NewAsyncWriteWrapper(w io.Writer, opts ...AsyncWriteWrapperOption) *AsyncWriteWrapper {
 	wrapper := &AsyncWriteWrapper{
 		writer:          w,
@@ -229,29 +223,57 @@ func NewAsyncWriteWrapper(w io.Writer, opts ...AsyncWriteWrapperOption) *AsyncWr
 		opt(wrapper)
 	}
 	wrapper.cond = sync.NewCond(&wrapper.mutex)
-	wrapper.ready.SetReady() // 一开始缓冲区是空的，所以是就绪状态
+	wrapper.ready.SetReady()
 	go wrapper.run()
 	return wrapper
 }
 
 func (aww *AsyncWriteWrapper) run() {
+	var tempBuf []byte
+	defer func() {
+		bytespool.Free(tempBuf)
+		aww.mutex.Lock()
+		aww.ready.SetReady()
+		aww.cond.Broadcast()
+		aww.mutex.Unlock()
+	}()
 	for {
 		aww.mutex.Lock()
-		for aww.buffer.Len() == 0 {
+		// Wait for data or close signal
+		bufLen := aww.buffer.Len()
+		for bufLen == 0 {
 			select {
 			case <-aww.done:
+				aww.err = os.ErrClosed
 				aww.mutex.Unlock()
 				return
 			default:
-				aww.cond.Wait()
 			}
+			aww.ready.SetReady()
+			aww.cond.Broadcast()
+			aww.cond.Wait()
+			bufLen = aww.buffer.Len()
 		}
 
-		tempBuf := make([]byte, aww.buffer.Len())
-		_, _ = aww.buffer.Read(tempBuf)
+		if bufLen > len(tempBuf) {
+			bytespool.Free(tempBuf)
+			tempBuf = bytespool.Alloc(int32(bufLen))
+		}
+		n, _ := aww.buffer.Read(tempBuf)
 		aww.mutex.Unlock()
 
-		n, err := aww.writer.Write(tempBuf)
+		// Perform write outside of lock to avoid blocking buffer operations
+		var err error
+		p := tempBuf
+		for writeSize := n; writeSize > 0; {
+			var w int
+			w, err = aww.writer.Write(p[:writeSize])
+			if err != nil {
+				break
+			}
+			writeSize -= w
+			p = p[w:]
+		}
 
 		aww.mutex.Lock()
 		if n > 0 && aww.bytesWritten != nil {
@@ -259,9 +281,9 @@ func (aww *AsyncWriteWrapper) run() {
 		}
 		if err != nil {
 			aww.err = err
+			aww.mutex.Unlock()
+			return
 		}
-		aww.ready.SetReady()
-		aww.cond.Broadcast() // 唤醒可能在等待 Flush 的 goroutine
 		aww.mutex.Unlock()
 	}
 }
@@ -304,13 +326,15 @@ func (aww *AsyncWriteWrapper) BlockingFlush() error {
 	return aww.err
 }
 
-// 新增: Flush 触发一次非阻塞的刷新。
+// Flush triggers a non-blocking flush signal to the background writer
+// According to WASI spec, flush should be async. Use BlockingFlush for synchronous behavior.
+// Returns current error state to prevent silent data loss.
 func (aww *AsyncWriteWrapper) Flush() error {
-	return aww.BlockingFlush()
 	aww.mutex.Lock()
 	defer aww.mutex.Unlock()
-	aww.cond.Signal() // 唤醒后台 goroutine
-	return nil
+	aww.cond.Signal() // Wake up background goroutine
+	// Return current error state to propagate write failures
+	return aww.err
 }
 
 func (aww *AsyncWriteWrapper) CheckWrite() uint64 {
@@ -320,11 +344,6 @@ func (aww *AsyncWriteWrapper) CheckWrite() uint64 {
 }
 
 func (aww *AsyncWriteWrapper) subscribe() IPollable {
-	aww.mutex.Lock()
-	defer aww.mutex.Unlock()
-	if aww.buffer.Len() < aww.maxBufferSize || aww.err != nil {
-		aww.ready.SetReady()
-	}
 	return aww.ready
 }
 
@@ -339,19 +358,18 @@ func (aww *AsyncWriteWrapper) Close() error {
 }
 
 func (aww *AsyncWriteWrapper) closeInternal() error {
+	var closeErr error
 	aww.once.Do(func() {
-		aww.mutex.Lock()
 		close(aww.done)
 		aww.cond.Broadcast()
-		aww.mutex.Unlock()
+		if aww.closeUnderlying {
+			if c, ok := aww.writer.(io.Closer); ok {
+				closeErr = c.Close()
+			}
+		}
 	})
 
-	if aww.closeUnderlying {
-		if c, ok := aww.writer.(io.Closer); ok {
-			return c.Close()
-		}
-	}
-	return nil
+	return closeErr
 }
 
 // NewAsyncStreamForWriter 是一个便捷辅助函数，

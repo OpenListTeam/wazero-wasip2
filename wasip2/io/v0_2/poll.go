@@ -18,10 +18,9 @@ func newPollImpl(pm *io.PollManager) *pollImpl {
 
 // DropPollable 是 pollable 资源的析构函数。
 func (i *pollImpl) DropPollable(_ context.Context, handle Pollable) {
-	if p, ok := i.pm.Get(handle); ok {
+	if p, ok := i.pm.Pop(handle); ok {
 		p.Close() // 调用接口的 Close 方法
 	}
-	i.pm.Remove(handle)
 }
 
 // Ready 实现 [method]pollable.ready 方法。

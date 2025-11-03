@@ -137,3 +137,38 @@ func (h *Host) ResolveAddressStreamManager() *sockets.ResolveAddressStreamManage
 func (h *Host) TLSManager() *tls.TLSManager {
 	return h.tlsManager
 }
+
+// Close releases all resources managed by this Host instance
+// This should be called when the Host is no longer needed to prevent resource leaks
+func (h *Host) Close() error {
+	// Close all managers in reverse order of creation to handle dependencies
+	h.resolveAddressStreamManager.CloseAll()
+	h.udpSocketManager.CloseAll()
+	h.tcpSocketManager.CloseAll()
+	h.networkManager.CloseAll()
+
+	h.directoryEntryStreamManager.CloseAll()
+	h.filesystemManager.CloseAll()
+
+	h.tlsManager.ClientHandshakes.CloseAll()
+	h.tlsManager.ClientConnections.CloseAll()
+	h.tlsManager.FutureClientStreams.CloseAll()
+
+	h.httpManager.IncomingBodies.CloseAll()
+	h.httpManager.OutgoingResponses.CloseAll()
+	h.httpManager.ResponseOutparams.CloseAll()
+	h.httpManager.IncomingRequests.CloseAll()
+	h.httpManager.FutureTrailers.CloseAll()
+	h.httpManager.Bodies.CloseAll()
+	h.httpManager.Responses.CloseAll()
+	h.httpManager.Futures.CloseAll()
+	h.httpManager.OutgoingRequests.CloseAll()
+	h.httpManager.Options.CloseAll()
+	h.httpManager.Fields.CloseAll()
+
+	h.pollManager.CloseAll()
+	h.errorManager.CloseAll()
+	h.streamManager.CloseAll()
+
+	return nil
+}

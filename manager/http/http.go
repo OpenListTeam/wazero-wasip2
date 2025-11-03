@@ -154,7 +154,7 @@ func (o *OutgoingBody) Close() error {
 
 // FutureTrailers 代表一个尚未到达的 HTTP Trailers。
 type FutureTrailers struct {
-	Pollable *manager_io.ChannelPollable
+	Pollable manager_io.IPollable
 	Result   ResultTrailers
 	Consumed atomic.Bool
 }
@@ -237,10 +237,14 @@ func NewHTTPManager(sm *manager_io.StreamManager, poll *manager_io.PollManager) 
 		FutureTrailers: witgo.NewResourceManager[*FutureTrailers](nil),
 
 		IncomingRequests: witgo.NewResourceManager[*IncomingRequest](func(resource *IncomingRequest) {
-			resource.Body.Close()
+			if resource != nil && resource.Body != nil {
+				resource.Body.Close()
+			}
 		}),
 		ResponseOutparams: witgo.NewResourceManager[*ResponseOutparam](func(resource *ResponseOutparam) {
-			close(resource.ResultChan)
+			if resource != nil && resource.ResultChan != nil {
+				close(resource.ResultChan)
+			}
 		}),
 		OutgoingResponses: witgo.NewResourceManager[*OutgoingResponse](func(resource *OutgoingResponse) {
 			resource.Close()

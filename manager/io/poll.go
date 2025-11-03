@@ -16,6 +16,23 @@ type IPollable interface {
 	// Close 用于释放与 Pollable 关联的资源，例如取消底层的定时器。
 	Close()
 }
+type readyPollable struct {
+	ch <-chan struct{}
+}
+
+// NewReadyPollable 创建一个已经处于“就绪”状态的 ChannelPollable。
+func NewReadyPollable() IPollable {
+	ch := make(chan struct{})
+	close(ch)
+	return &readyPollable{ch}
+}
+
+func (p readyPollable) Channel() <-chan struct{} { return p.ch }
+func (readyPollable) IsReady() bool              { return true }
+func (readyPollable) Block()                     {}
+func (readyPollable) Close()                     {}
+
+var ReadyPollable = NewReadyPollable()
 
 // channelPollable 是 IPollable 接口的一个具体实现，它使用 channel 来进行阻塞。
 // 这个实现是线程安全的。
@@ -37,17 +54,6 @@ func NewPollableByChan(c chan struct{}, cancel func()) *ChannelPollable {
 	return &ChannelPollable{
 		readyChan: c,
 		cancel:    cancel,
-	}
-}
-
-var ReadyPollable = NewReadyPollable()
-
-// NewReadyPollable 创建一个已经处于“就绪”状态的 ChannelPollable。
-func NewReadyPollable() *ChannelPollable {
-	ch := make(chan struct{})
-	close(ch)
-	return &ChannelPollable{
-		readyChan: ch,
 	}
 }
 
@@ -128,8 +134,6 @@ type PollManager = witgo.ResourceManager[IPollable]
 // NewManager 创建一个新的 Poll 管理器。
 func NewPollManager() *PollManager {
 	return witgo.NewResourceManager[IPollable](func(resource IPollable) {
-		if resource.Close != nil {
-			resource.Close()
-		}
+		resource.Close()
 	})
 }

@@ -14,23 +14,6 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-func (i *tcpImpl) DropTCPSocket(_ context.Context, handle TCPSocket) {
-	sock, ok := i.host.TCPSocketManager().Get(handle)
-	if !ok {
-		return
-	}
-	if sock.Fd != 0 {
-		windows.Close(windows.Handle(sock.Fd))
-	}
-	if sock.Conn != nil {
-		sock.Conn.Close()
-	}
-	if sock.Listener != nil {
-		sock.Listener.Close()
-	}
-	i.host.TCPSocketManager().Remove(handle)
-}
-
 func (i *tcpImpl) StartBind(_ context.Context, this TCPSocket, network Network, localAddress IPSocketAddress) witgo.Result[witgo.Unit, ErrorCode] {
 	sock, ok := i.host.TCPSocketManager().Get(this)
 	if !ok {

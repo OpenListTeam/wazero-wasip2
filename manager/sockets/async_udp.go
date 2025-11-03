@@ -7,6 +7,7 @@ import (
 	"net"
 	"sync"
 
+	"github.com/OpenListTeam/wazero-wasip2/common/bytespool"
 	manager_io "github.com/OpenListTeam/wazero-wasip2/manager/io"
 )
 
@@ -36,7 +37,8 @@ func NewAsyncUDPReader(conn *net.UDPConn) *AsyncUDPReader {
 }
 
 func (ar *AsyncUDPReader) run() {
-	buf := make([]byte, 65535)
+	buf := bytespool.Alloc(64 * 1024)
+	defer bytespool.Free(buf)
 	for {
 		select {
 		case <-ar.done:
