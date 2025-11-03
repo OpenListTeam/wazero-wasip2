@@ -228,7 +228,29 @@ func lowerSlice(ctx context.Context, mem api.Memory, ptr uint32, val reflect.Val
 	contentPtr := binary.LittleEndian.Uint32(buf[0:4])
 	contentLen := binary.LittleEndian.Uint32(buf[4:8])
 
+	return lowerSlice2(ctx, mem, contentPtr, contentLen, val)
+}
+
+func lowerSlice2(ctx context.Context, mem api.Memory, contentPtr uint32, contentLen uint32, val reflect.Value) error {
 	elemType := val.Type().Elem()
+
+	// 快速路径：[]byte（元素类型为 uint8），一次性读取并直接赋值，避免逐元素读写开销。
+	if elemType.Kind() == reflect.Uint8 {
+		if contentLen == 0 {
+			// 设置空切片
+			var zero []byte
+			val.Set(reflect.ValueOf(zero))
+			return nil
+		}
+		content, err := LowerSliceFromParts(mem, contentPtr, contentLen)
+		if err != nil {
+			return err
+		}
+		val.Set(reflect.ValueOf(content))
+		return nil
+	}
+
+	// 通用路径：逐元素使用已有布局读取
 	elemLayout, err := GetOrCalculateLayout(elemType)
 	if err != nil {
 		return err

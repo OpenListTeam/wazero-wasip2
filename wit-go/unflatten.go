@@ -105,20 +105,7 @@ func (h *Host) unflattenSlice(ctx context.Context, mem api.Memory, ps *paramStre
 		return reflect.Value{}, fmt.Errorf("not enough params on stack for slice")
 	}
 
-	// We must use `Lower` here, as it contains the generic logic for handling list<T>.
-	// We do this by temporarily creating the {ptr, len} structure in memory.
-	tempPtr, err := h.allocator.Allocate(ctx, 8, 4)
-	if err != nil {
-		return reflect.Value{}, err
-	}
-	if !mem.WriteUint32Le(tempPtr, uint32(ptr)) {
-		return reflect.Value{}, fmt.Errorf("failed to write temp slice ptr")
-	}
-	if !mem.WriteUint32Le(tempPtr+4, uint32(length)) {
-		return reflect.Value{}, fmt.Errorf("failed to write temp slice len")
-	}
-
-	err = Lower(ctx, h, tempPtr, outVal)
+	err := lowerSlice2(ctx, mem, uint32(ptr), uint32(length), outVal)
 	return outVal, err
 }
 
@@ -249,18 +236,18 @@ func (e *Exporter) makeWrapperFunc(funcType reflect.Type, funcVal reflect.Value)
 		callArgs := make([]reflect.Value, funcType.NumIn())
 		funcParamIndex := 0
 
-		if funcType.NumIn() > 0 && funcType.In(0) == reflect.TypeFor[context.Context]() {
+		if len(callArgs) > 0 && funcType.In(0) == reflect.TypeFor[context.Context]() {
 			callArgs[0] = args[0]
 			funcParamIndex = 1
 		}
 
-		for i := funcParamIndex; i < funcType.NumIn(); i++ {
-			paramType := funcType.In(i)
+		for ; funcParamIndex < len(callArgs); funcParamIndex++ {
+			paramType := funcType.In(funcParamIndex)
 			val, err := h.unflattenParam(ctx, module.Memory(), paramStream, paramType)
 			if err != nil {
-				panic(fmt.Sprintf("failed to unflatten parameter %d for %s: %v", i, funcVal.Type().Name(), err))
+				panic(fmt.Sprintf("failed to unflatten parameter %d for %s: %v", funcParamIndex, funcVal.Type().Name(), err))
 			}
-			callArgs[i] = val
+			callArgs[funcParamIndex] = val
 		}
 
 		results := funcVal.Call(callArgs)
